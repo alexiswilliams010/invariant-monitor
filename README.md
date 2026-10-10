@@ -2,7 +2,7 @@
 
 Transaction evidence and visualization for Ethereum mainnet and Base mainnet, built in TypeScript. Decoding will use ABI and compiler metadata rather than contract-specific rules. D2.js is the selected sequence renderer.
 
-The current checkpoint collects transaction evidence, resolves Sourcify metadata, and decodes ABI calls and declared Solidity storage into readable JSON. Rendering and inference are not implemented yet.
+The current checkpoint collects transaction evidence, resolves Sourcify metadata, decodes ABI calls and declared Solidity storage, and groups repeated call sequences. Rendering and inference are not implemented yet.
 
 ## Setup
 
@@ -81,13 +81,13 @@ Display JSON preserves every call's identity, parent, sender, target, code/stora
 
 The sibling `<output>.diagnostics.json` holds addresses, transaction identity, metadata bindings, and decode coverage separately. Only the display file is intended as input to the later YAML/image presentation step. `valueWei` records call semantics and is not an asset-transfer ledger; in particular, a delegated call's value must not be counted as another transfer. Both output paths must be new.
 
-`--metadata-dir` selects a metadata store. `--cached-metadata-only` skips Sourcify network lookups but still uses Alchemy for historical code checks. `--env-file` selects Alchemy credentials as with collection. Full offline decoding, signature-database fallback, receipt-event decoding, constructor decoding, and call compression are not included yet.
+`--metadata-dir` selects a metadata store. `--cached-metadata-only` skips Sourcify network lookups but still uses Alchemy for historical code checks. `--env-file` selects Alchemy credentials as with collection. Full offline decoding, signature-database fallback, receipt-event decoding, and constructor decoding are not included yet.
 
 Live validation decoded ABI arguments for 46 of 55 calls in the Ethereum fixture and 42 of 68 in the Base sample. This is ABI coverage, not a claim that opaque bytes were interpreted. Every original call edge remained present, and both display files contained no hex representations.
 
 ## Storage decoding
 
-The same `decode` command now writes display schema version 2, adding `storage.status` and transaction-level `storage.changes`. To include storage, collect evidence with `--state-diff`. Existing evidence files remain version 1. No additional state reads or replay calls are needed for storage decoding.
+The `decode` display includes `storage.status` and transaction-level `storage.changes`. To include storage, collect evidence with `--state-diff`. Existing evidence files remain version 1. No additional state reads or replay calls are needed for storage decoding.
 
 Layouts come from code-matched Solidity metadata for non-reverted, writable call contexts. Delegated code contributes its layout to the caller's storage context. Compatible declarations are deduplicated; overlapping conflicting declarations stay `storage`. Changes are not assigned to an individual call because net state diffs do not identify the writing frame. Historical code matching retains the block-boundary limitations described above.
 
@@ -98,6 +98,18 @@ Display changes carry the variable path, declared type, decoded before/after val
 Search is bounded: 512 candidate words, 128 keys per type, 256 array elements, 8 KiB of long byte/string payload locations, 24 levels, and 50,000 traversal visits per layout. Diagnostics flag limited searches. Exceeding traversal limits discards that account's partial attribution; unresolved changes remain present. Unknown dynamic-array lengths, missing/invalid layouts, Vyper layouts, and unsupported types do not trigger contract-specific heuristics.
 
 Live fixtures attributed 7 of 38 changed Ethereum slots and 19 of 22 Base slots. Some slots contain multiple changed packed fields. The remaining slots stayed `storage`, and both display files remained hex-free. Raw slot addresses and attribution status are recorded only in the sibling diagnostic file.
+
+## Call-sequence compression
+
+`decode` now produces display schema version 3 with a `sequence` tree. Call nodes reference the complete `calls` list by ID. Repeat nodes contain a representative body and count; a renderer can show this as a loop box with `x20`. All original call facts and transaction-level storage changes remain available.
+
+Only consecutive sibling calls or sibling blocks can repeat. Every corresponding call must match its raw caller, callee, storage context, call kind, selector, value in wei, revert/read-only flags, and nested call structure. Contract names and human-readable function labels are not grouping keys. Intermediate calls stay in the representative body, and grouping never changes an edge's endpoints. Creation and destruction are excluded.
+
+Arguments and return data may differ. Raw byte comparisons set `diffArgs` and `diffReturns`, including when the readable value is only `bytes`. A renderer must mark these differences rather than presenting the first iteration's values as universal. No per-iteration state effects are inferred from transaction-level state diffs.
+
+The compressor considers patterns up to 32 sibling subtrees, chooses the greatest local reduction, and favors shorter patterns on ties. It is deterministic, not a globally optimal compressor. Diagnostics record all call IDs for every iteration; expanding those records restores the original call order. Nested representative loops retain their own records, while outer repeat records cover every original iteration.
+
+On saved fixtures, Ethereum's 55 calls become 41 representative calls in two repeated blocks. Base retains all 68 calls because no eligible repetition was found. These checks run locally without additional network requests.
 
 ## Development
 

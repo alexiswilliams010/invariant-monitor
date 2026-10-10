@@ -3,6 +3,7 @@ import type { CallFrame, TransactionEvidence } from "../collection/types.js";
 import type { ContractMetadata, MetadataResult } from "../metadata/types.js";
 import { AbiDecoder, decodeValues } from "./abi.js";
 import type { Binding } from "./binding.js";
+import { CallSequenceCompressor, type SequenceNode } from "./compression.js";
 import { StorageCandidates } from "./storage-candidates.js";
 import { StorageDecoder, type StorageDisplay } from "./storage.js";
 import {
@@ -28,10 +29,11 @@ export interface DisplayCall {
 }
 
 export interface ExecutionDisplay {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly chain: string;
   readonly calls: readonly DisplayCall[];
   readonly storage: StorageDisplay;
+  readonly sequence: readonly SequenceNode[];
 }
 
 export interface MetadataLookup {
@@ -55,6 +57,7 @@ export class TransactionDecoder {
   constructor(
     private readonly metadata: MetadataLookup,
     private readonly code: CodeMatcher,
+    private readonly compressor = new CallSequenceCompressor(),
   ) {}
 
   async decode(evidence: TransactionEvidence) {
@@ -181,20 +184,23 @@ export class TransactionDecoder {
       resolved,
     );
     await this.code.validateBlock(evidence);
+    const compression = this.compressor.compress(evidence.calls);
     const display: ExecutionDisplay = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       chain: evidence.identity.chain,
       calls,
       storage: storage.display,
+      sequence: compression.sequence,
     };
     return {
       display,
       diagnostics: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         identity: evidence.identity,
         bindings,
         decoding,
         storage: storage.diagnostics,
+        repeats: compression.repeats,
         addresses: names.entries(),
       },
     };
