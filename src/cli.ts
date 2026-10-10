@@ -11,6 +11,7 @@ import { FileCollectionCache } from "./collection/cache.js";
 import { hash } from "./collection/validation.js";
 import { runMetadataCli } from "./metadata/cli.js";
 import { runDecodeCli } from "./decoding/cli.js";
+import { runRenderCli } from "./rendering/cli.js";
 
 const help = `Usage: invariant-monitor check-config --chain <ethereum|base> [--env-file <path>]
        invariant-monitor collect --chain <ethereum|base> --tx <hash> --output <path>
@@ -19,15 +20,19 @@ const help = `Usage: invariant-monitor check-config --chain <ethereum|base> [--e
          [--offline | --refresh] [--cache-dir <path>]
        invariant-monitor decode --input <evidence.json> --output <display.json>
          [--metadata-dir <path>] [--cached-metadata-only] [--env-file <path>]
+       invariant-monitor render --input <display.json> --output <prefix>
+         [--quality 90] [--scale 1]
 
 check-config checks local configuration without network requests.
 collect saves raw evidence and normalized calls; output must not already exist.
 State diffs are opt-in. Cache defaults to .cache/collections.
 metadata looks up one contract in Sourcify; cache defaults to .cache/metadata.
+render writes D2, SVG and JPEG locally; all three output paths must be new.
 Environment variables override values in .env.
 `;
 
 export async function runCli(args: string[]): Promise<string> {
+  if (args[0] === "render") return runRenderCli(args.slice(1));
   if (args[0] === "decode") return runDecodeCli(args.slice(1));
   if (args[0] === "metadata") return runMetadataCli(args.slice(1));
   let parsed: ReturnType<typeof parseArgs>;

@@ -192,3 +192,43 @@ test("invalid trees and invalid search limits fail instead of silently dropping 
   ];
   assert.equal(new CallSequenceCompressor(1).compress(pair).repeats.length, 0);
 });
+
+test("repeated bodies compress consecutive inner runs without crossing intervening calls", () => {
+  const calls = [
+    call("root"),
+    ...Array.from({ length: 3 }, (_, iteration) =>
+      Array.from({ length: 5 }, (_, offset) =>
+        call(`${iteration}.${offset}`, {
+          to: offset === 1 ? c : b,
+          storageContext: offset === 1 ? c : b,
+          input: `0x12345678${(iteration * 5 + offset).toString(16).padStart(2, "0")}`,
+          output: `0x${offset.toString(16).padStart(2, "0")}`,
+        }),
+      ),
+    ).flat(),
+  ];
+  const result = compress(calls);
+  const root = result.sequence[0]!;
+  if (root.kind !== "call") throw new Error("Missing root");
+  const outer = root.children[0]!;
+  if (outer.kind !== "repeat") throw new Error("Missing outer repeat");
+  assert.equal(outer.count, 3);
+  assert.equal(outer.body.length, 3);
+  assert.deepEqual(
+    outer.body
+      .slice(0, 2)
+      .map((node) => (node.kind === "call" ? node.callId : null)),
+    ["0.0", "0.1"],
+  );
+  const inner = outer.body[2]!;
+  if (inner.kind !== "repeat") throw new Error("Missing inner repeat");
+  assert.equal(inner.count, 3);
+  assert.equal(inner.diffArgs, true);
+  assert.equal(inner.diffReturns, true);
+  assert.equal(result.repeats.length, 2);
+  for (const node of [outer, inner]) {
+    const evidence = result.repeats.find((item) => item.id === node.id)!;
+    assert.deepEqual(expand(node.body, result.repeats), evidence.iterations[0]);
+  }
+  assert.deepEqual(result.repeats[1]!.iterations, [["0.2"], ["0.3"], ["0.4"]]);
+});

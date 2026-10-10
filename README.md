@@ -2,7 +2,7 @@
 
 Transaction evidence and visualization for Ethereum mainnet and Base mainnet, built in TypeScript. Decoding will use ABI and compiler metadata rather than contract-specific rules. D2.js is the selected sequence renderer.
 
-The current checkpoint collects transaction evidence, resolves Sourcify metadata, decodes ABI calls and declared Solidity storage, and groups repeated call sequences. Rendering and inference are not implemented yet.
+The current checkpoint collects transaction evidence, resolves Sourcify metadata, decodes ABI calls and declared Solidity storage, groups repeated call sequences, and renders D2 sequence diagrams. YAML facts and inference are not implemented yet.
 
 ## Setup
 
@@ -107,9 +107,28 @@ Only consecutive sibling calls or sibling blocks can repeat. Every corresponding
 
 Arguments and return data may differ. Raw byte comparisons set `diffArgs` and `diffReturns`, including when the readable value is only `bytes`. A renderer must mark these differences rather than presenting the first iteration's values as universal. No per-iteration state effects are inferred from transaction-level state diffs.
 
-The compressor considers patterns up to 32 sibling subtrees, chooses the greatest local reduction, and favors shorter patterns on ties. It is deterministic, not a globally optimal compressor. Diagnostics record all call IDs for every iteration; expanding those records restores the original call order. Nested representative loops retain their own records, while outer repeat records cover every original iteration.
+The compressor considers patterns up to 32 sibling subtrees, chooses the greatest local reduction, and favors shorter patterns on ties. It is deterministic, not a globally optimal compressor. Diagnostics record all call IDs for every iteration; expanding those records restores the original call order. Repeated bodies are recursively compressed, including consecutive runs within an outer repeated block. Nested representative loops retain their own records, while outer repeat records cover every original iteration.
 
-On saved fixtures, Ethereum's 55 calls become 41 representative calls in two repeated blocks. Base retains all 68 calls because no eligible repetition was found. These checks run locally without additional network requests.
+On saved fixtures, Ethereum's 55 calls become 39 representative calls in three repeated blocks, including an inner three-call run. Base retains all 68 calls because no eligible repetition was found. These checks run locally without additional network requests.
+
+## Sequence diagrams
+
+```sh
+npm run dev -- render --input artifacts/ethereum-sequence.json \
+  --output artifacts/ethereum-diagram --quality 90 --scale 1
+```
+
+Use a display schema version 3 file from `decode`. Rendering runs locally without credentials or network requests, and writes `<prefix>.d2`, `<prefix>.svg`, and `<prefix>.jpg`. All three paths must be new. Invalid inputs and failed exports remove only files created by that attempt.
+
+D2.js runs through its Node/WASM API. SVG rasterization uses resvg, and Sharp encodes JPEG; no Java, browser, or React runtime is required. JPEG quality is 1–100 and scale is 0.25–4, with a 50-million-pixel limit. Scale changes raster dimensions, while quality changes JPEG compression. The SVG remains at its original vector dimensions. JPEG text uses available system fonts with Arial as its fallback; font appearance can differ from D2's embedded SVG fonts. [D2.js](https://github.com/d2lang/d2/tree/master/d2js/js), [resvg](https://github.com/thx/resvg-js).
+
+The image is a compact ordered call view: each row names the caller and callee, with the action on an arrow between them. There are no lifelines, activation boxes, or return arrows. Calls stay in execution order; only repeat groups have boxes marked `xN` and argument/return differences. Reverted calls are red and marked `revert`. D2 measures labels and renders the diagram; a compact layout sets row positions and column widths without scaling fonts. Standalone D2 source therefore has different spacing. Labels exclude raw hex and escape D2 syntax. [D2 grid diagrams](https://d2lang.com/tour/grid-diagrams/)
+
+The image emphasizes function names. Calldata arguments, storage changes, and asset summaries are not drawn in this checkpoint. Nonzero ordinary CALL values are shown in exact wei; these are attempted call values, not a net asset ledger. Delegated value is not shown as another transfer. No contract-specific asset interpretation is added.
+
+The JPEG is the image intended for API input; SVG is an optional inspection source. Traces currently produce one image; pagination and image tiling remain future work.
+
+The presentation folds an ordinary CALL or STATICCALL with a sole DELEGATECALL child when the child executes in the same storage context, the outcomes agree, and the outer action is unknown or matches the child. The incoming arrow retains the proxy identity and uses the implementation action/name. Multiple proxy addresses remain distinct even when they share implementation code. Other delegation, branching, and distinct named actions stay visible. This is an observed forwarding relationship, not protocol-specific proxy detection. Original calls and storage facts remain unchanged in the display JSON; folding is only a rendering step. Without activation/return markers, the image no longer shows exact stack lifetimes; the full parent relationships remain in JSON.
 
 ## Development
 
@@ -126,6 +145,7 @@ node dist/cli.js --help
 | `src/collection/` | RPC access, validation, call normalization, cache            |
 | `src/metadata/`   | Sourcify lookup, provenance, deduplicated offline store      |
 | `src/decoding/`   | Historical code checks, ABI/storage decoding, readable facts |
+| `src/rendering/`  | Sequence validation, D2 generation, SVG/JPEG export          |
 | `src/cli.ts`      | CLI argument handling                                        |
 | `test/`           | Configuration, CLI, RPC, and collection checks               |
 

@@ -150,7 +150,7 @@ export class CallSequenceCompressor {
         count,
         diffArgs: differs("input"),
         diffReturns: differs("output"),
-        body: siblings.slice(start, start + width).map((node) => node.view),
+        body: this.group(siblings.slice(start, start + width), repeats),
       });
       repeats.set(id, {
         id,
