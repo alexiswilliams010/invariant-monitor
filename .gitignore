@@ -1,2 +1,7 @@
 .env
 jevscan-chainmonitor
+node_modules/
+dist/
+coverage/
+.cache/
+artifacts/
