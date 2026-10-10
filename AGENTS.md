@@ -12,4 +12,5 @@
 - Maintain one typed, versioned execution representation shared by YAML and image generation. Preserve raw evidence and provenance separately from presentation.
 - Prefer composition and explicit data contracts. Add extension points for real requirements, without speculative frameworks or abstraction layers.
 - Use names and types that explain intent. Add comments only for non-obvious reasoning, constraints, or correctness requirements. Avoid comments that restate code and excessive method docstrings.
-- Do not implement contract-specific or contract-type-specific decoding. No special cases keyed by protocol, address, contract name, token category, function name, or familiar event selector.
+- Keep ABI and storage decoding generic. Put standard token semantics in a separate interpretation layer. Contract-specific interpretation must use explicitly configured adapters scoped by chain and contract address; do not add protocol/address/name/selector exceptions to the generic decoder.
+- Keep interpreted asset movements and selected state changes linked to their supporting evidence. Distinguish reported events, observed net state changes, and inferred movements. Do not turn an attempted call or an arbitrary numeric storage change into a confirmed asset transfer.

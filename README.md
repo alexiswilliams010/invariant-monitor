@@ -130,6 +130,18 @@ The JPEG is the image intended for API input; SVG is an optional inspection sour
 
 The presentation folds an ordinary CALL or STATICCALL with a sole DELEGATECALL child when the child executes in the same storage context, the outcomes agree, and the outer action is unknown or matches the child. The incoming arrow retains the proxy identity and uses the implementation action/name. Multiple proxy addresses remain distinct even when they share implementation code. Other delegation, branching, and distinct named actions stay visible. This is an observed forwarding relationship, not protocol-specific proxy detection. Original calls and storage facts remain unchanged in the display JSON; folding is only a rendering step. Without activation/return markers, the image no longer shows exact stack lifetimes; the full parent relationships remain in JSON.
 
+## Interpretation foundation
+
+`src/interpretation/` separates semantic interpretation from generic ABI/storage decoding. It defines a versioned internal document for asset movements, net asset balance changes, and contract state changes. Each fact carries evidence references and distinguishes event-reported, state-observed, and inferred interpretations. Transaction-level facts remain separate from facts attributed to a specific call. Net balance changes do not imply a particular sender/recipient pairing or transfer order.
+
+`TransactionInterpreter` receives an explicit list of adapters. Standard-token adapters can apply across a transaction; contract-specific adapters are scoped to a configured chain and address. Duplicate adapter IDs, facts without evidence references, and facts emitted with an unavailable/not-applicable status are rejected. Adapters are trusted interpretation code: these checks do not establish that their semantic conclusions are correct. Adapter exceptions fail the run. No adapters are registered by default.
+
+`SelectedStateAdapter` selects existing decoded changes for one contract, optionally by exact field/path name. For example, a future target can expose `shares: 100 → 120` as a state change without treating it as an asset transfer. Omitting the field list includes all that contract's recorded changes; an empty list selects none. Unattributed slots remain `storage`, and an unavailable diff remains unavailable. Selection does not introduce custom storage decoding or assign net changes to individual calls.
+
+Contract-specific calculations can implement the same adapter interface when targets are supplied. Interpretations retain adapter IDs and references to the original evidence. Asset amounts, balances, and token IDs use exact decimal strings; missing symbols/decimals remain unknown. These internal documents can contain raw addresses and must pass through name resolution before model-facing YAML/images. They must not be sent directly to a model.
+
+This checkpoint provides the interface, adapter runner, and generic selected-state adapter. Standard-token interpretation, semantic conflict reconciliation, CLI configuration, and asset-flow rendering are still pending. The existing decoder and renderer are not wired to this layer yet.
+
 ## Development
 
 ```sh
@@ -139,15 +151,16 @@ npm run build
 node dist/cli.js --help
 ```
 
-| Location          | Responsibility                                               |
-| ----------------- | ------------------------------------------------------------ |
-| `src/config/`     | Chain definitions and credential loading                     |
-| `src/collection/` | RPC access, validation, call normalization, cache            |
-| `src/metadata/`   | Sourcify lookup, provenance, deduplicated offline store      |
-| `src/decoding/`   | Historical code checks, ABI/storage decoding, readable facts |
-| `src/rendering/`  | Sequence validation, D2 generation, SVG/JPEG export          |
-| `src/cli.ts`      | CLI argument handling                                        |
-| `test/`           | Configuration, CLI, RPC, and collection checks               |
+| Location              | Responsibility                                               |
+| --------------------- | ------------------------------------------------------------ |
+| `src/config/`         | Chain definitions and credential loading                     |
+| `src/collection/`     | RPC access, validation, call normalization, cache            |
+| `src/metadata/`       | Sourcify lookup, provenance, deduplicated offline store      |
+| `src/decoding/`       | Historical code checks, ABI/storage decoding, readable facts |
+| `src/interpretation/` | Asset/state fact contracts and explicitly scoped adapters    |
+| `src/rendering/`      | Sequence validation, D2 generation, SVG/JPEG export          |
+| `src/cli.ts`          | CLI argument handling                                        |
+| `test/`               | Configuration, CLI, RPC, and collection checks               |
 
 Chain definitions and hash types come from viem. Each chain extends viem's definition with an Alchemy base URL; collection must use that explicit authenticated URL rather than viem's public default endpoint.
 
