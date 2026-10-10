@@ -25,7 +25,7 @@ export class D2SequenceRenderer {
       options.scale > 4
     )
       throw new Error("JPEG quality must be 1–100 and scale 0.25–4.");
-    const source = this.builder.build(input);
+    const { source, names } = this.builder.buildDocument(input);
     const d2 = new D2();
     let svg: string;
     try {
@@ -61,6 +61,7 @@ export class D2SequenceRenderer {
       .toBuffer({ resolveWithObject: true });
     return {
       source,
+      names,
       svg,
       jpeg: jpeg.data,
       width: jpeg.info.width,

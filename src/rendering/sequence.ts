@@ -19,6 +19,8 @@ export interface DiagramCall {
 }
 
 export interface DiagramInput {
+  readonly assetLabels?: ReadonlyMap<string, string>;
+  readonly addressNames?: ReadonlyMap<string, string>;
   readonly preferredNames?: ReadonlyMap<string, string>;
   readonly unplacedMovements?: readonly string[];
   readonly calls: ReadonlyMap<string, DiagramCall>;
@@ -121,6 +123,10 @@ export function readDiagram(value: unknown): DiagramInput {
 
 export class SequenceDiagramBuilder {
   build(original: DiagramInput): string {
+    return this.buildDocument(original).source;
+  }
+
+  buildDocument(original: DiagramInput) {
     const names = new ParticipantNameResolver().resolve(original);
     const forwarded = new ForwardingCollapser().collapse(
       new StaticCallFilter().filter(original),
@@ -240,7 +246,12 @@ export class SequenceDiagramBuilder {
       lines.push("}");
     }
 
-    return lines.join("\n") + "\n";
+    return {
+      source: lines.join("\n") + "\n",
+      names: new Map(
+        [...participants].map(([key, value]) => [key, value.label]),
+      ),
+    };
   }
 }
 

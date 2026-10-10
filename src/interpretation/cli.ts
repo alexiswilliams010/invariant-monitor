@@ -19,6 +19,7 @@ import { D2SequenceRenderer } from "../rendering/renderer.js";
 import { StandardTokenInterpreter, RpcTokenMetadataReader } from "./tokens.js";
 import { AssetFlowProjector } from "./asset-view.js";
 import { array, object } from "../collection/validation.js";
+import { OutcomeExporter } from "./outcomes.js";
 
 export async function runFlowCli(args: string[]): Promise<string> {
   const { values } = parseArgs({
@@ -104,7 +105,7 @@ export async function runFlowCli(args: string[]): Promise<string> {
   const files: { path: string; handle: FileHandle }[] = [];
   let completed = false;
   try {
-    for (const extension of ["d2", "svg", "jpg", "diagnostics.json"]) {
+    for (const extension of ["d2", "svg", "jpg", "diagnostics.json", "yaml"]) {
       const path = `${values.output}.${extension}`;
       files.push({ path, handle: await open(path, "wx") });
     }
@@ -149,6 +150,12 @@ export async function runFlowCli(args: string[]): Promise<string> {
       quality: Number(values.quality ?? 90),
       scale: Number(values.scale ?? 1),
     });
+    const outcomes = new OutcomeExporter().build(
+      context,
+      tokens,
+      projection,
+      result.names,
+    );
     await files[0]!.handle.writeFile(result.source);
     await files[1]!.handle.writeFile(result.svg);
     await files[2]!.handle.writeFile(result.jpeg);
@@ -164,13 +171,15 @@ export async function runFlowCli(args: string[]): Promise<string> {
           metadata: [...tokens.metadata],
           hiddenReadIds: tokens.hiddenReadIds,
           unplacedMovements: projection.unplacedMovements,
+          outcomes: outcomes.diagnostics,
         },
         null,
         2,
       ),
     );
+    await files[4]!.handle.writeFile(outcomes.yaml);
     completed = true;
-    return `Rendered ${result.width} × ${result.height}: ${tokens.movements.length} reported token movements, ${projection.unplacedMovements?.length ?? 0} without call placement.\nSaved ${values.output}.jpg\n`;
+    return `Rendered ${result.width} × ${result.height}: ${tokens.movements.length} reported token movements, ${projection.unplacedMovements?.length ?? 0} without call placement.\nSaved ${values.output}.jpg and ${values.output}.yaml\n`;
   } finally {
     await Promise.all(files.map((file) => file.handle.close()));
     if (!completed) await Promise.all(files.map((file) => unlink(file.path)));

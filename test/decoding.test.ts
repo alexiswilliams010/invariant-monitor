@@ -21,10 +21,16 @@ import { readEvidence } from "../src/decoding/evidence.js";
 import {
   AddressNames,
   displayArguments,
+  displayText,
 } from "../src/decoding/presentation.js";
 import { RpcFailure } from "../src/collection/rpc.js";
 
 const sender: Address = `0x${"aa".repeat(20)}`;
+
+test("hex sanitization preserves numeric suffixes within compiler identifiers", () => {
+  assert.equal(displayText("feeGrowthGlobal0X128"), "feeGrowthGlobal0X128");
+  assert.equal(displayText("value: 0xabcdef"), "value: bytes");
+});
 const target: Address = `0x${"bb".repeat(20)}`;
 const another: Address = `0x${"cc".repeat(20)}`;
 const txHash: Hash = `0x${"11".repeat(32)}`;

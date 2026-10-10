@@ -101,7 +101,7 @@ function displayArgument(
 
 export function displayText(value: string): string {
   return value
-    .replace(/0x[0-9a-f]+/gi, "bytes")
+    .replace(/\b0x[0-9a-f]+/gi, "bytes")
     .replace(/\b(?=[0-9a-f]*[a-f])[0-9a-f]{16,}\b/gi, "bytes")
     .replace(/[\u0000-\u001f\u007f]/g, " ")
     .slice(0, 512);

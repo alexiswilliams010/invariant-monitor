@@ -2,7 +2,7 @@
 
 Transaction evidence and visualization for Ethereum mainnet and Base mainnet, built in TypeScript. Decoding will use ABI and compiler metadata rather than contract-specific rules. D2.js is the selected sequence renderer.
 
-The current checkpoint collects transaction evidence, resolves Sourcify metadata, decodes ABI calls and declared Solidity storage, groups repeated call sequences, and renders D2 sequence diagrams. YAML facts and inference are not implemented yet.
+The current checkpoint collects transaction evidence, resolves Sourcify metadata, decodes ABI calls and declared Solidity storage, groups repeated call sequences, and exports D2 diagrams and YAML outcome summaries. Inference is not implemented yet.
 
 ## Setup
 
@@ -153,7 +153,7 @@ npm run dev -- flow --input artifacts/ethereum-fixture.json \
   --display artifacts/ethereum-sequence.json --output artifacts/ethereum-assets
 ```
 
-The command requires the matching `<display>.diagnostics.json` file. It checks identities and call/address correspondence, revalidates raw evidence, and recomputes repetition groups. Outputs are D2, SVG, JPEG, and a diagnostic JSON sidecar; all paths must be new. The sidecar contains raw evidence references and is not model-facing input.
+The command requires the matching `<display>.diagnostics.json` file. It checks identities and call/address correspondence, revalidates raw evidence, and recomputes repetition groups. Outputs are D2, SVG, JPEG, YAML, and a diagnostic JSON sidecar; all paths must be new. The sidecar contains raw evidence references and is not model-facing input.
 
 The standard adapter recognizes the ERC-20 Transfer event layout and records movements against the emitting contract address, including proxies. NFT Transfer layouts are excluded. Optional symbols/decimals come from successful metadata calls already in the trace, or historical `eth_call` reads at the transaction block with chain and canonical-block checks. Legacy bytes32 symbols are supported. Historical reads describe block-end metadata, not an isolated transaction-time snapshot. `--offline` disables RPC access; missing decimals use exact raw units, never an assumed scale. Matching symbols get distinct labels when asset addresses differ. [ERC-20](https://eips.ethereum.org/EIPS/eip-20)
 
@@ -164,6 +164,35 @@ Token arrows mean **event-reported movement**, not independently proven balance 
 Successful empty-calldata leaf CALLs with nonzero native value become native-asset arrows. Calls with calldata or children retain their execution detail; gas fees and a full native net-balance ledger are not inferred. Asset arrows have no return arrow; ordinary calls retain dashed returns.
 
 On the Ethereum fixture, seven ERC-20 movements are reported. Six replace transfer-call subtrees, while one DAI mint remains unplaced. FiatToken proxy assets appear as USDC and EURC, identified by separate proxy addresses; implementation contracts are not token holders or assets. Underlying call/storage evidence remains intact.
+
+## YAML outcomes
+
+`flow` also writes `<prefix>.yaml`, using the same resolved participant names as the image. It contains transaction status, signed net ERC-20 movement per address, decoded state differences. It does not repeat the call sequence.
+
+```yaml
+version: 1
+chain: ethereum
+status: success
+token_net_from_transfers:
+  Safe:
+    - -20 USDC
+  Recipient:
+    - +20 USDC
+decoded_state:
+  Vault:
+    - field: shares[Safe]
+      type: uint256
+      before: "100"
+      after: "120"
+```
+
+Token totals use every interpreted receipt transfer, including transfers without call placement. Aggregation keys are asset and holder addresses, never symbols. Integer arithmetic remains exact; known decimals format quantities, missing decimals retain raw units, and zero net totals are omitted. Mint/burn zero-address endpoints are not presented as holders. These totals are derived from events, not final balances or proof of storage-backed balance changes. Native assets, gas, NFTs, rebases, and unreported movements are outside this section.
+
+When the trace contains a qualifying early `balanceOf(holder)` read, totals include a percentage such as `-20 USDC (-100%)`. The read must be a successful canonical `STATICCALL` before any potentially state-changing execution in that token's storage context. Delegate forwarding is allowed; other nested calls, conflicting early values, and later reads are excluded. The denominator is the token-reported balance observed before its first potential write, under standard ERC-20 semantics; it is not independently verified storage. No previous-block approximation, event-based balance reconstruction, extra RPC call, or replay is used. Caller-dependent or other nonstandard balance semantics remain outside this interpretation.
+
+Zero prior balances produce `new balance` for positive movement. Missing denominators or totals implying a negative final balance omit the percentage. Percentages use integer arithmetic; inexact results are truncated to two decimal places and marked `~`, and sub-0.01% changes use `<0.01%`. A partial drain is never rounded to `-100%`. Supporting balance call IDs and exact denominators remain in diagnostics. Decoded storage before/after values are retained, and authorization extraction remains separate.
+
+State entries require a decoded type and both values. Unknown slots and opaque values are omitted; coverage counts remain only in the diagnostic sidecar. Integer values remain strings, boolean values remain booleans, and generic storage values are not scaled using token decimals. Address-valued fields and known mapping keys reuse participant labels; unresolved keys remain `unknown`. Lists preserve distinct changes whose displayed field names coincide. The diagnostic sidecar links totals to receipt logs and state entries to decoded change IDs, keeping raw addresses out of YAML.
 
 ## Development
 

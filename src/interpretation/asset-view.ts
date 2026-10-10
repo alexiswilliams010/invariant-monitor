@@ -146,6 +146,13 @@ export class AssetFlowProjector {
         calls.set(id, movementCall(m, id, null));
         return id;
       });
-    return { calls, sequence, unplacedMovements, preferredNames };
+    return {
+      calls,
+      sequence,
+      unplacedMovements,
+      preferredNames,
+      assetLabels: labels,
+      addressNames: names,
+    };
   }
 }
