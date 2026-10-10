@@ -9,18 +9,23 @@ import { AlchemyRpcClient } from "./collection/rpc.js";
 import { AlchemyTransactionCollector } from "./collection/collector.js";
 import { FileCollectionCache } from "./collection/cache.js";
 import { hash } from "./collection/validation.js";
+import { runMetadataCli } from "./metadata/cli.js";
 
 const help = `Usage: invariant-monitor check-config --chain <ethereum|base> [--env-file <path>]
        invariant-monitor collect --chain <ethereum|base> --tx <hash> --output <path>
          [--state-diff] [--no-cache] [--cache-dir <path>] [--env-file <path>]
+       invariant-monitor metadata --chain <ethereum|base> --address <address> --output <path>
+         [--offline | --refresh] [--cache-dir <path>]
 
 check-config checks local configuration without network requests.
 collect saves raw evidence and normalized calls; output must not already exist.
 State diffs are opt-in. Cache defaults to .cache/collections.
+metadata looks up one contract in Sourcify; cache defaults to .cache/metadata.
 Environment variables override values in .env.
 `;
 
 export async function runCli(args: string[]): Promise<string> {
+  if (args[0] === "metadata") return runMetadataCli(args.slice(1));
   let parsed: ReturnType<typeof parseArgs>;
   try {
     parsed = parseArgs({
