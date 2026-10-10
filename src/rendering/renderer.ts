@@ -9,6 +9,18 @@ export interface ImageOptions {
   readonly scale: number;
 }
 
+export function validateImageOptions(options: ImageOptions): void {
+  if (
+    !Number.isInteger(options.quality) ||
+    options.quality < 1 ||
+    options.quality > 100 ||
+    !Number.isFinite(options.scale) ||
+    options.scale < 0.25 ||
+    options.scale > 4
+  )
+    throw new Error("JPEG quality must be 1–100 and scale 0.25–4.");
+}
+
 export class D2SequenceRenderer {
   constructor(private readonly builder = new SequenceDiagramBuilder()) {}
 
@@ -16,15 +28,7 @@ export class D2SequenceRenderer {
     input: DiagramInput,
     options: ImageOptions = { quality: 90, scale: 1 },
   ) {
-    if (
-      !Number.isInteger(options.quality) ||
-      options.quality < 1 ||
-      options.quality > 100 ||
-      !Number.isFinite(options.scale) ||
-      options.scale < 0.25 ||
-      options.scale > 4
-    )
-      throw new Error("JPEG quality must be 1–100 and scale 0.25–4.");
+    validateImageOptions(options);
     const { source, names } = this.builder.buildDocument(input);
     const d2 = new D2();
     let svg: string;

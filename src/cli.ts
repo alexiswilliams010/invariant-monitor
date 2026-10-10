@@ -13,8 +13,11 @@ import { runMetadataCli } from "./metadata/cli.js";
 import { runDecodeCli } from "./decoding/cli.js";
 import { runFlowCli } from "./interpretation/cli.js";
 import { runRenderCli } from "./rendering/cli.js";
+import { runAnalyzeCli } from "./pipeline/cli.js";
 
 const help = `Usage: invariant-monitor check-config --chain <ethereum|base> [--env-file <path>]
+       invariant-monitor analyze --chain <ethereum|base> --tx <hash> --output <new-directory>
+         [--no-state-diff] [--cached-metadata-only] [--quality 90] [--scale 1]
        invariant-monitor collect --chain <ethereum|base> --tx <hash> --output <path>
          [--state-diff] [--no-cache] [--cache-dir <path>] [--env-file <path>]
        invariant-monitor metadata --chain <ethereum|base> --address <address> --output <path>
@@ -26,6 +29,7 @@ const help = `Usage: invariant-monitor check-config --chain <ethereum|base> [--e
          [--quality 90] [--scale 1]
 
 check-config checks local configuration without network requests.
+analyze produces JPEG and YAML plus evidence and diagnostics; state diffs are requested by default.
 collect saves raw evidence and normalized calls; output must not already exist.
 State diffs are opt-in. Cache defaults to .cache/collections.
 metadata looks up one contract in Sourcify; cache defaults to .cache/metadata.
@@ -34,6 +38,7 @@ Environment variables override values in .env.
 `;
 
 export async function runCli(args: string[]): Promise<string> {
+  if (args[0] === "analyze") return runAnalyzeCli(args.slice(1));
   if (args[0] === "flow") return runFlowCli(args.slice(1));
   if (args[0] === "render") return runRenderCli(args.slice(1));
   if (args[0] === "decode") return runDecodeCli(args.slice(1));

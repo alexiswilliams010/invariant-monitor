@@ -66,7 +66,11 @@ test("rejects unsupported chains and inherited object properties", () => {
 test("CLI help needs no credentials and rejects incomplete commands", async () => {
   assert.match(await runCli(["--help"]), /check-config/);
   await assert.rejects(runCli(["check-config"]), /Specify --chain/);
-  await assert.rejects(runCli(["analyze"]), /Expected check-config/);
+  await assert.rejects(
+    runCli(["analyze"]),
+    /Specify --chain, --tx and --output/,
+  );
+  await assert.rejects(runCli(["unknown-command"]), /Expected check-config/);
   await assert.rejects(
     runCli(["--unknown", "private-value"]),
     (error: Error) => !error.message.includes("private-value"),

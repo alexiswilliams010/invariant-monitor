@@ -18,6 +18,20 @@ Set `ALCHEMY_API_KEY` in the repository's ignored `.env` file or the process env
 
 `check-config` checks local configuration only. It does not contact Alchemy or verify credentials, chain access, or trace-method availability.
 
+## One-command report
+
+```sh
+npm run dev -- analyze --chain ethereum \
+  --tx 0xd29d1c8d9a1b424d4e0f472bd7b4a994028d35e9737c591eae51d917543bb854 \
+  --output artifacts/ethereum-report
+```
+
+Use `--chain base` for Base mainnet. `analyze` coordinates collection, historical metadata matching, decoding, interpretation, rendering, and YAML export. It produces `sequence.jpg` and `outcomes.yaml`, alongside `sequence.d2`, `sequence.svg`, `evidence.json`, `decoded.json`, `decoded.json.diagnostics.json`, and `interpretation.diagnostics.json`. No model endpoint is called.
+
+The output directory must not already exist. Output paths are reserved before network requests. Failed runs remove their own output files, while reusable collection and metadata caches remain. The command reports its current stage on stderr. It validates the canonical block after token metadata lookup before rendering.
+
+Unlike the standalone `collect` command, `analyze` requests state diffs by default; `--no-state-diff` disables them. Unavailable state diffs remain explicit in diagnostics and do not prevent the rest of the report. `--no-cache` skips the collection cache; `--cache-dir` and `--metadata-dir` choose cache locations. `--cached-metadata-only` avoids Sourcify requests but still uses Alchemy for collection, historical code validation, and token metadata. `--env-file`, `--quality`, and `--scale` work as in the standalone commands. The YAML schema is unchanged.
+
 ## Collection
 
 ```sh
