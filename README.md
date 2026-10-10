@@ -208,6 +208,36 @@ Zero prior balances produce `new balance` for positive movement. Missing denomin
 
 State entries require a decoded type and both values. Unknown slots and opaque values are omitted; coverage counts remain only in the diagnostic sidecar. Integer values remain strings, boolean values remain booleans, and generic storage values are not scaled using token decimals. Address-valued fields and known mapping keys reuse participant labels; unresolved keys remain `unknown`. Lists preserve distinct changes whose displayed field names coincide. The diagnostic sidecar links totals to receipt logs and state entries to decoded change IDs, keeping raw addresses out of YAML.
 
+## Decisions API
+
+`decide` sends an existing report's `outcomes.yaml` and `sequence.jpg` to Vercel. It does not recollect the transaction or send raw evidence, SVGs, or diagnostics. The YAML is unchanged; a short input preamble explains evidence and diagram semantics. Questions live in a separate JSON array with predicate, choice, or score definitions. Invariant questions, address groups, and benchmark design remain deferred.
+
+Vercel accepts images as base64 data URLs. Use an image-capable decision model such as `openai/gpt-6-luna-decisions`; `typesafe-ai/jev` is text-only and rejects these requests. The model slug is explicit, with no automatic fallback or image removal. [Vercel Decisions API](https://vercel.com/docs/ai-gateway/sdks-and-apis/openai-decisions)
+
+Inspect the exact request locally first:
+
+```sh
+npm run dev -- decide --report artifacts/ethereum-d29d1c8d-report \
+  --questions examples/decisions-smoke.questions.json \
+  --model openai/gpt-6-luna-decisions \
+  --output artifacts/decisions-request.json --dry-run
+```
+
+The example question only checks report reading; it is not an exploit detector. A dry run needs no API key and makes no network request. It writes the full image payload, so the resulting JSON can be large.
+
+Add `AI_GATEWAY_API_KEY` to the ignored `.env`, then send the same report:
+
+```sh
+npm run dev -- decide --report artifacts/ethereum-d29d1c8d-report \
+  --questions examples/decisions-smoke.questions.json \
+  --model openai/gpt-6-luna-decisions \
+  --output artifacts/decisions-result.json
+```
+
+`--detail` accepts `low`, `high` (default), `auto`, or `original`. `--env-file` selects another environment file; environment variables take precedence. Alchemy credentials are not required for `decide`.
+
+The result preserves ordered answers (including refusals), returned model, usage, and provider metadata, alongside requested model, questions, image detail, duration, and SHA-256 fingerprints of the inputs and exact request. An API error is not a negative decision. Requests time out after two minutes and are not automatically retried; a timed-out request may still have been processed and billed. Output paths must be new and are reserved before sending. Run the command again with a different model and output path to compare providers against the same report.
+
 ## Development
 
 ```sh
