@@ -46,6 +46,7 @@ export class AssetFlowProjector {
       return names.get(key)!;
     };
     const labels = new Map<Address, string>();
+    const preferredNames = new Map<string, string>();
     const taken = new Set<string>();
     for (const asset of tokens.metadata.keys()) {
       const base = displayText(
@@ -56,6 +57,8 @@ export class AssetFlowProjector {
       while (taken.has(label)) label = `${base}_${suffix++}`;
       taken.add(label);
       labels.set(asset, label);
+      if (tokens.metadata.get(asset)?.symbol)
+        preferredNames.set(name(asset, "Asset"), label);
     }
     const movementCall = (
       movement: TokenMovement,
@@ -143,6 +146,6 @@ export class AssetFlowProjector {
         calls.set(id, movementCall(m, id, null));
         return id;
       });
-    return { calls, sequence, unplacedMovements };
+    return { calls, sequence, unplacedMovements, preferredNames };
   }
 }

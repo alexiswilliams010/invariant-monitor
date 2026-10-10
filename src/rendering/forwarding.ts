@@ -2,11 +2,8 @@ import type { SequenceNode } from "../decoding/compression.js";
 import type { DiagramInput } from "./sequence.js";
 
 export class ForwardingCollapser {
-  collapse(
-    input: DiagramInput,
-  ): DiagramInput & { names: ReadonlyMap<string, string> } {
+  collapse(input: DiagramInput): DiagramInput {
     const calls = new Map(input.calls);
-    const implementations = new Map<string, Set<string>>();
     const visit = (nodes: readonly SequenceNode[]): SequenceNode[] =>
       nodes.map((node) => {
         if (node.kind === "repeat") return { ...node, body: visit(node.body) };
@@ -25,18 +22,12 @@ export class ForwardingCollapser {
           child.reverted === call.reverted &&
           (call.action === "call" || call.action === child.action)
         ) {
-          const names = implementations.get(call.to) ?? new Set<string>();
-          names.add(child.to);
-          implementations.set(call.to, names);
           calls.set(call.id, { ...call, action: child.action });
           return { ...node, children: visit(childNode.children) };
         }
         return { ...node, children: visit(node.children) };
       });
     const sequence = visit(input.sequence);
-    const names = new Map<string, string>();
-    for (const [proxy, targets] of implementations)
-      if (targets.size === 1) names.set(proxy, [...targets][0]!);
-    return { calls, sequence, names };
+    return { ...input, calls, sequence };
   }
 }

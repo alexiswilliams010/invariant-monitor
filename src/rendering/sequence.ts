@@ -3,6 +3,7 @@ import type { SequenceNode } from "../decoding/compression.js";
 import { displayText } from "../decoding/presentation.js";
 import { ForwardingCollapser } from "./forwarding.js";
 import { StaticCallFilter } from "./static-calls.js";
+import { ParticipantNameResolver } from "./names.js";
 
 export interface DiagramCall {
   id: string;
@@ -18,6 +19,7 @@ export interface DiagramCall {
 }
 
 export interface DiagramInput {
+  readonly preferredNames?: ReadonlyMap<string, string>;
   readonly unplacedMovements?: readonly string[];
   readonly calls: ReadonlyMap<string, DiagramCall>;
   readonly sequence: readonly SequenceNode[];
@@ -119,6 +121,7 @@ export function readDiagram(value: unknown): DiagramInput {
 
 export class SequenceDiagramBuilder {
   build(original: DiagramInput): string {
+    const names = new ParticipantNameResolver().resolve(original);
     const forwarded = new ForwardingCollapser().collapse(
       new StaticCallFilter().filter(original),
     );
@@ -148,7 +151,7 @@ export class SequenceDiagramBuilder {
         : call.to;
     const register = (key: string, label: string) => {
       if (participants.has(key)) return;
-      const base = input.names.get(key) ?? label;
+      const base = names.get(key) ?? label;
       let name = base;
       let suffix = 2;
       while (labels.has(name)) name = `${base}_${suffix++}`;
