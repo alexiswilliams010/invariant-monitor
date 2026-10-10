@@ -11,6 +11,7 @@ import { FileCollectionCache } from "./collection/cache.js";
 import { hash } from "./collection/validation.js";
 import { runMetadataCli } from "./metadata/cli.js";
 import { runDecodeCli } from "./decoding/cli.js";
+import { runFlowCli } from "./interpretation/cli.js";
 import { runRenderCli } from "./rendering/cli.js";
 
 const help = `Usage: invariant-monitor check-config --chain <ethereum|base> [--env-file <path>]
@@ -20,6 +21,7 @@ const help = `Usage: invariant-monitor check-config --chain <ethereum|base> [--e
          [--offline | --refresh] [--cache-dir <path>]
        invariant-monitor decode --input <evidence.json> --output <display.json>
          [--metadata-dir <path>] [--cached-metadata-only] [--env-file <path>]
+       invariant-monitor flow --input <evidence.json> --display <display.json> --output <prefix> [--offline]
        invariant-monitor render --input <display.json> --output <prefix>
          [--quality 90] [--scale 1]
 
@@ -32,6 +34,7 @@ Environment variables override values in .env.
 `;
 
 export async function runCli(args: string[]): Promise<string> {
+  if (args[0] === "flow") return runFlowCli(args.slice(1));
   if (args[0] === "render") return runRenderCli(args.slice(1));
   if (args[0] === "decode") return runDecodeCli(args.slice(1));
   if (args[0] === "metadata") return runMetadataCli(args.slice(1));

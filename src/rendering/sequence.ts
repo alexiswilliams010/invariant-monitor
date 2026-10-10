@@ -2,13 +2,15 @@ import { array, object } from "../collection/validation.js";
 import type { SequenceNode } from "../decoding/compression.js";
 import { displayText } from "../decoding/presentation.js";
 import { ForwardingCollapser } from "./forwarding.js";
+import { StaticCallFilter } from "./static-calls.js";
 
-interface DiagramCall {
+export interface DiagramCall {
   id: string;
   parentId: string | null;
   from: string;
   to: string;
-  storageContext: string;
+  storageContext: string | null;
+  assetMovement?: boolean;
   action: string;
   kind: string;
   valueWei: string;
@@ -16,6 +18,7 @@ interface DiagramCall {
 }
 
 export interface DiagramInput {
+  readonly unplacedMovements?: readonly string[];
   readonly calls: ReadonlyMap<string, DiagramCall>;
   readonly sequence: readonly SequenceNode[];
 }
@@ -53,7 +56,8 @@ export function readDiagram(value: unknown): DiagramInput {
       parentId: item.parentId === null ? null : text(item.parentId),
       from: text(item.from),
       to: text(item.to),
-      storageContext: text(item.storageContext),
+      storageContext:
+        item.storageContext === null ? null : text(item.storageContext),
       action: text(item.action),
       kind,
       valueWei,
@@ -115,7 +119,26 @@ export function readDiagram(value: unknown): DiagramInput {
 
 export class SequenceDiagramBuilder {
   build(original: DiagramInput): string {
-    const input = new ForwardingCollapser().collapse(original);
+    const forwarded = new ForwardingCollapser().collapse(
+      new StaticCallFilter().filter(original),
+    );
+    const omitSelfCalls = (nodes: readonly SequenceNode[]): SequenceNode[] =>
+      nodes.flatMap((node): SequenceNode[] => {
+        if (node.kind === "repeat") {
+          const body = omitSelfCalls(node.body);
+          return body.length ? [{ ...node, body }] : [];
+        }
+        const call = forwarded.calls.get(node.callId)!;
+        const children = omitSelfCalls(node.children);
+        if (
+          call.from === call.to &&
+          !call.assetMovement &&
+          ["CALL", "STATICCALL", "DELEGATECALL", "CALLCODE"].includes(call.kind)
+        )
+          return children;
+        return [{ ...node, children }];
+      });
+    const input = { ...forwarded, sequence: omitSelfCalls(forwarded.sequence) };
     const participants = new Map<string, { id: string; label: string }>();
     const labels = new Set<string>();
     const targetKey = (call: DiagramCall) =>
@@ -144,42 +167,76 @@ export class SequenceDiagramBuilder {
       }
     };
     visit(input.sequence);
-    const lines = ["grid-columns: 1", "vertical-gap: 12", "style.fill: white"];
-    let row = 0;
+    for (const id of original.unplacedMovements ?? []) {
+      const call = input.calls.get(id)!;
+      register(call.from, call.from);
+      register(targetKey(call), call.to);
+    }
+    const lines = ["shape: sequence_diagram", "style.fill: white"];
+    for (const { id, label } of participants.values())
+      lines.push(
+        `${id}: ${quote(label)} {shape: text; style.font-size: 20; style.font-color: "#172033"}`,
+      );
     let group = 0;
-    const emit = (nodes: readonly SequenceNode[], indent: string) => {
+    const emit = (nodes: readonly SequenceNode[], count = 1) => {
       for (const node of nodes) {
         if (node.kind === "repeat") {
-          const label = [
-            `x${node.count}`,
-            ...(node.diffArgs ? ["diff args"] : []),
-            ...(node.diffReturns ? ["diff returns"] : []),
-          ].join(" · ");
+          if (
+            node.body.length === 1 &&
+            node.body[0]?.kind === "call" &&
+            !node.body[0].children.length
+          ) {
+            emit(node.body, node.count);
+            continue;
+          }
           lines.push(
-            `${indent}g${group++}: ${quote(label)} {`,
-            `${indent}  style.fill: "#f1f5f9"`,
-            `${indent}  grid-columns: 1; vertical-gap: 12; style.font-size: 20`,
+            `g${group++}: "Repeat ×${node.count}" {`,
+            'style.fill: "#f1f5f9"; style.stroke: "#52677c"; style.stroke-width: 2; style.font-size: 20',
           );
-          emit(node.body, `${indent}  `);
-          lines.push(`${indent}}`);
+          emit(node.body);
+          lines.push("}");
           continue;
         }
         const call = input.calls.get(node.callId)!;
-        const label = `${call.action}${call.valueWei !== "0" && call.kind === "CALL" ? ` · ${call.valueWei} wei` : ""}${call.reverted ? " · revert" : ""}`;
-        const stroke = call.reverted ? "#b91c1c" : "#334155";
+        const from = participants.get(call.from)!.id;
+        const to = participants.get(targetKey(call))!.id;
+        const label =
+          call.action +
+          (!call.assetMovement && call.kind === "CALL" && call.valueWei !== "0"
+            ? ` · ${call.valueWei} wei`
+            : "") +
+          (count > 1 ? ` ×${count}` : "") +
+          (call.reverted ? " · revert" : "");
+        const color = call.reverted
+          ? "#b91c1c"
+          : call.assetMovement
+            ? "#047857"
+            : "#334e68";
         lines.push(
-          `${indent}r${row++}: "" {`,
-          `${indent}  grid-columns: 2; horizontal-gap: 340`,
-          `${indent}  style.stroke-width: 0; style.fill: transparent`,
-          `${indent}  a: ${quote(participants.get(call.from)!.label)} {shape: text; width: 250; style.font-size: 20}`,
-          `${indent}  b: ${quote(participants.get(targetKey(call))!.label)} {shape: text; width: 250; style.font-size: 20}`,
-          `${indent}  a -> b: ${quote(label)} {style.stroke: "${stroke}"; style.font-color: "#111827"; style.font-size: 20}`,
-          `${indent}}`,
+          `${from} -> ${to}: ${quote(label)} {style.font-size: 20; style.font-color: "${color}"; style.stroke: "${color}"; style.stroke-width: 2}`,
         );
-        emit(node.children, indent);
+        emit(node.children);
+        if (!call.assetMovement && call.kind !== "SELFDESTRUCT")
+          lines.push(
+            `${to} -> ${from}: "" {style.stroke-dash: 4; style.stroke: "#64748b"; style.stroke-width: 1}`,
+          );
       }
     };
-    emit(input.sequence, "");
+    emit(input.sequence);
+    if (original.unplacedMovements?.length) {
+      lines.push(
+        'unplaced: "Reported transfers · call position unknown" {style.fill: "#f0fdf4"; style.font-size: 18',
+      );
+      emit(
+        original.unplacedMovements.map((callId) => ({
+          kind: "call",
+          callId,
+          children: [],
+        })),
+      );
+      lines.push("}");
+    }
+
     return lines.join("\n") + "\n";
   }
 }

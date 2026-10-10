@@ -122,13 +122,15 @@ Use a display schema version 3 file from `decode`. Rendering runs locally withou
 
 D2.js runs through its Node/WASM API. SVG rasterization uses resvg, and Sharp encodes JPEG; no Java, browser, or React runtime is required. JPEG quality is 1–100 and scale is 0.25–4, with a 50-million-pixel limit. Scale changes raster dimensions, while quality changes JPEG compression. The SVG remains at its original vector dimensions. JPEG text uses available system fonts with Arial as its fallback; font appearance can differ from D2's embedded SVG fonts. [D2.js](https://github.com/d2lang/d2/tree/master/d2js/js), [resvg](https://github.com/thx/resvg-js).
 
-The image is a compact ordered call view: each row names the caller and callee, with the action on an arrow between them. There are no lifelines, activation boxes, or return arrows. Calls stay in execution order; only repeat groups have boxes marked `xN` and argument/return differences. Reverted calls are red and marked `revert`. D2 measures labels and renders the diagram; a compact layout sets row positions and column widths without scaling fonts. Standalone D2 source therefore has different spacing. Labels exclude raw hex and escape D2 syntax. [D2 grid diagrams](https://d2lang.com/tour/grid-diagrams/)
+The image uses shared participant lanes, solid call arrows, and dashed return arrows. Single-call repetition is shown on the arrow (`createHash ×3`); repeated multi-call bodies use a `Repeat ×N` box. Argument/return differences remain in the data instead of the labels. Reverted calls are red. D2 measures labels and renders the diagram; a compact layout reduces vertical whitespace while retaining room for group headings. Standalone D2 source therefore has different spacing. Labels exclude raw hex and escape D2 syntax. [D2 sequence diagrams](https://d2lang.com/tour/sequence-diagrams/)
 
-The image emphasizes function names. Calldata arguments, storage changes, and asset summaries are not drawn in this checkpoint. Nonzero ordinary CALL values are shown in exact wei; these are attempted call values, not a net asset ledger. Delegated value is not shown as another transfer. No contract-specific asset interpretation is added.
+Successful `STATICCALL` subtrees are omitted from both diagram views, including nested calls that inherit the static context. Failed reads and the ancestor calls needed to locate them remain visible. Empty repeat boxes and lanes used only by hidden reads are removed. Self-call arrows and markers are omitted while preserving their nested calls in order with their original endpoints. This is a presentation filter: decoded calls, arguments, results, and raw evidence remain unchanged. Function names and ABI `view` labels alone do not trigger filtering, so an ordinary `CALL` named `balanceOf` remains visible. The asset view also omits unplaced zero-value transfers from the image, while retaining their reported events in the evidence.
+
+The image emphasizes function names. The plain `render` command does not interpret token movements or draw storage changes. Use `flow` below for the asset view. Nonzero ordinary CALL values are shown in exact wei; these are attempted call values, not a net asset ledger. Delegated value is not shown as another transfer. No contract-specific asset interpretation is added.
 
 The JPEG is the image intended for API input; SVG is an optional inspection source. Traces currently produce one image; pagination and image tiling remain future work.
 
-The presentation folds an ordinary CALL or STATICCALL with a sole DELEGATECALL child when the child executes in the same storage context, the outcomes agree, and the outer action is unknown or matches the child. The incoming arrow retains the proxy identity and uses the implementation action/name. Multiple proxy addresses remain distinct even when they share implementation code. Other delegation, branching, and distinct named actions stay visible. This is an observed forwarding relationship, not protocol-specific proxy detection. Original calls and storage facts remain unchanged in the display JSON; folding is only a rendering step. Without activation/return markers, the image no longer shows exact stack lifetimes; the full parent relationships remain in JSON.
+The presentation folds an ordinary CALL or STATICCALL with a sole DELEGATECALL child when the child executes in the same storage context, the outcomes agree, and the outer action is unknown or matches the child. The incoming arrow retains the proxy identity and uses the implementation action/name. Multiple proxy addresses remain distinct even when they share implementation code. Other delegation, branching, and distinct named actions stay visible. This is an observed forwarding relationship, not protocol-specific proxy detection. Original calls and storage facts remain unchanged in the display JSON; folding is only a rendering step. Return arrows follow the call tree; full parent relationships remain in JSON.
 
 ## Interpretation foundation
 
@@ -140,7 +142,26 @@ The presentation folds an ordinary CALL or STATICCALL with a sole DELEGATECALL c
 
 Contract-specific calculations can implement the same adapter interface when targets are supplied. Interpretations retain adapter IDs and references to the original evidence. Asset amounts, balances, and token IDs use exact decimal strings; missing symbols/decimals remain unknown. These internal documents can contain raw addresses and must pass through name resolution before model-facing YAML/images. They must not be sent directly to a model.
 
-This checkpoint provides the interface, adapter runner, and generic selected-state adapter. Standard-token interpretation, semantic conflict reconciliation, CLI configuration, and asset-flow rendering are still pending. The existing decoder and renderer are not wired to this layer yet.
+The standard ERC-20 adapter and asset view below are wired through a separate `flow` command. Selected-contract configuration, semantic conflict reconciliation across adapters, and selected-state rendering remain pending. Generic ABI/storage decoding is unchanged.
+
+## Asset-flow diagrams
+
+```sh
+npm run dev -- flow --input artifacts/ethereum-fixture.json \
+  --display artifacts/ethereum-sequence.json --output artifacts/ethereum-assets
+```
+
+The command requires the matching `<display>.diagnostics.json` file. It checks identities and call/address correspondence, revalidates raw evidence, and recomputes repetition groups. Outputs are D2, SVG, JPEG, and a diagnostic JSON sidecar; all paths must be new. The sidecar contains raw evidence references and is not model-facing input.
+
+The standard adapter recognizes the ERC-20 Transfer event layout and records movements against the emitting contract address, including proxies. NFT Transfer layouts are excluded. Optional symbols/decimals come from successful metadata calls already in the trace, or historical `eth_call` reads at the transaction block with chain and canonical-block checks. Legacy bytes32 symbols are supported. Historical reads describe block-end metadata, not an isolated transaction-time snapshot. `--offline` disables RPC access; missing decimals use exact raw units, never an assumed scale. Matching symbols get distinct labels when asset addresses differ. [ERC-20](https://eips.ethereum.org/EIPS/eip-20)
+
+A transfer arrow runs between holders, labelled with the amount and asset. A token call is replaced only when exactly one reported event matches exactly one successful ordinary transfer/transferFrom call by emitting token, holders, and amount. Its subtree must be empty or a chain of same-calldata delegate forwarding in the same storage context. False returns, callback subtrees, amount mismatches, and ambiguous matches retain their calls. Successfully decoded symbol/decimals reads for observed tokens can be omitted. Approvals and other protocol operations are not hidden. Repeated representative calls remain calls because one representative amount cannot stand for every iteration.
+
+Token arrows mean **event-reported movement**, not independently proven balance changes. Event-to-call association is an inference from a unique match; `trace_transaction` does not bind receipt logs to frames. Events without that match appear separately under “Reported transfers · call position unknown”, without claiming they occurred after the call sequence. State corroboration is explicitly unavailable in this checkpoint: generic numeric storage deltas, including packed fields, are not automatically token balances. Rebase/fee semantics, nonstandard token logs, NFTs, and ERC-1155 interpretation remain outside this adapter.
+
+Successful empty-calldata leaf CALLs with nonzero native value become native-asset arrows. Calls with calldata or children retain their execution detail; gas fees and a full native net-balance ledger are not inferred. Asset arrows have no return arrow; ordinary calls retain dashed returns.
+
+On the Ethereum fixture, seven ERC-20 movements are reported. Six replace transfer-call subtrees, while one DAI mint remains unplaced. FiatToken proxy assets appear as USDC and EURC, identified by separate proxy addresses; implementation contracts are not token holders or assets. Underlying call/storage evidence remains intact.
 
 ## Development
 

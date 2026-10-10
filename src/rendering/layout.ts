@@ -2,70 +2,35 @@ import type { Diagram } from "@d2lang/d2";
 
 export function compactCallLayout(diagram: Diagram): Diagram {
   const result = structuredClone(diagram);
-  const left = result.shapes.filter((shape) => shape.id.endsWith(".a"));
-  const right = result.shapes.filter((shape) => shape.id.endsWith(".b"));
-  const leftWidth = Math.max(
-    160,
-    ...left.map(
-      (shape) => ("labelWidth" in shape ? shape.labelWidth : 0) * 1.25 + 24,
-    ),
+  const actors = result.shapes.filter((shape) => /^p\d+$/.test(shape.id));
+  const header = Math.max(
+    0,
+    ...actors.map((shape) => shape.pos.y + shape.height),
   );
-  const rightWidth = Math.max(
-    160,
-    ...right.map(
-      (shape) => ("labelWidth" in shape ? shape.labelWidth : 0) * 1.25 + 24,
-    ),
-  );
-  const gap = Math.max(
-    240,
-    ...result.connections.map((edge) => edge.labelWidth * 1.3 + 48),
-  );
-  const width = Math.ceil(leftWidth + gap + rightWidth + 32);
-  const place = (parent: string, top: number): number => {
-    let y = top;
-    const children = result.shapes.filter((shape) => {
-      const dot = shape.id.lastIndexOf(".");
-      return (dot < 0 ? "" : shape.id.slice(0, dot)) === parent;
-    });
-    for (const shape of children) {
-      shape.pos = { x: 0, y };
-      shape.width = width;
-      if (/(^|\.)r\d+$/.test(shape.id)) {
-        const a = result.shapes.find((item) => item.id === `${shape.id}.a`)!;
-        const b = result.shapes.find((item) => item.id === `${shape.id}.b`)!;
-        a.pos = { x: 16, y: y + 4 };
-        a.width = Math.ceil(leftWidth);
-        b.pos = { x: Math.ceil(16 + leftWidth + gap), y: y + 4 };
-        b.width = Math.ceil(rightWidth);
-        const edge = result.connections.find(
-          (item) => item.src === a.id && item.dst === b.id,
-        )!;
-        edge.labelWidth = Math.ceil(edge.labelWidth * 1.3);
-        const height =
-          Math.max(
-            "labelHeight" in a ? a.labelHeight : 0,
-            "labelHeight" in b ? b.labelHeight : 0,
-            edge.labelHeight,
-          ) + 8;
-        edge.route = [
-          { x: 16 + leftWidth, y: y + height / 2 },
-          { x: b.pos.x, y: y + height / 2 },
-        ];
-        shape.height = height;
-      } else {
-        shape.height =
-          place(
-            shape.id,
-            y + ("labelHeight" in shape ? shape.labelHeight : 0) + 16,
-          ) -
-          y +
-          4;
-      }
-      y += shape.height + 8;
-    }
-    return y;
-  };
-  result.root.width = width;
-  result.root.height = place("", 0);
+  const bands = result.shapes
+    .filter((shape) => !/^p\d+$/.test(shape.id))
+    .map((shape) => [shape.pos.y, shape.pos.y + 42] as const);
+  const y = (value: number) =>
+    value <= header
+      ? value
+      : Math.round(
+          header +
+            (value - header) * 0.45 +
+            bands.reduce(
+              (sum, [a, b]) =>
+                sum +
+                0.55 * Math.max(0, Math.min(value, b) - Math.max(header, a)),
+              0,
+            ),
+        );
+  for (const shape of [...result.shapes, result.root]) {
+    const bottom = y(shape.pos.y + shape.height);
+    shape.pos.y = y(shape.pos.y);
+    shape.height = bottom - shape.pos.y;
+  }
+  for (const edge of result.connections) {
+    for (const point of edge.route) if (point) point.y = y(point.y);
+    edge.labelWidth = Math.ceil(edge.labelWidth * 1.2);
+  }
   return result;
 }
