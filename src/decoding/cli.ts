@@ -67,7 +67,11 @@ export async function runDecodeCli(args: string[]): Promise<string> {
     const count = result.diagnostics.decoding.filter(
       (call) => call.status === "decoded",
     ).length;
-    return `Decoded arguments for ${count}/${evidence.calls.length} calls.\nSaved ${values.output}\nDiagnostics ${diagnosticPath}\n`;
+    const slots = result.diagnostics.storage.slots;
+    const attributed = slots.filter(
+      (slot) => slot.status === "attributed",
+    ).length;
+    return `Decoded arguments for ${count}/${evidence.calls.length} calls.\nStorage ${result.display.storage.status}: ${attributed}/${slots.length} slots attributed.\nSaved ${values.output}\nDiagnostics ${diagnosticPath}\n`;
   } finally {
     await file.close();
     await diagnostics?.close();

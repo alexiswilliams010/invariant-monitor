@@ -3,6 +3,8 @@ import type { CallFrame, TransactionEvidence } from "../collection/types.js";
 import type { ContractMetadata, MetadataResult } from "../metadata/types.js";
 import { AbiDecoder, decodeValues } from "./abi.js";
 import type { Binding } from "./binding.js";
+import { StorageCandidates } from "./storage-candidates.js";
+import { StorageDecoder, type StorageDisplay } from "./storage.js";
 import {
   AddressNames,
   displayArguments,
@@ -26,9 +28,10 @@ export interface DisplayCall {
 }
 
 export interface ExecutionDisplay {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly chain: string;
   readonly calls: readonly DisplayCall[];
+  readonly storage: StorageDisplay;
 }
 
 export interface MetadataLookup {
@@ -118,6 +121,7 @@ export class TransactionDecoder {
       signature?: string;
       returnsDecoded: boolean;
     }[] = [];
+    const candidates = new StorageCandidates(evidence);
     const calls = evidence.calls.map((call): DisplayCall => {
       const isCall = !["CREATE", "CREATE2", "SELFDESTRUCT"].includes(call.type);
       const decoded =
@@ -126,6 +130,10 @@ export class TransactionDecoder {
         decoded && !call.reverted
           ? decodeValues(decoded.callable.outputs, call.output)
           : null;
+      if (decoded) {
+        candidates.addParameters(decoded.callable.inputs, decoded.args);
+        candidates.addParameters(decoded.callable.outputs, returns);
+      }
       decoding.push({
         callId: call.id,
         status: decoded
@@ -168,19 +176,25 @@ export class TransactionDecoder {
         readOnly: call.readOnly,
       };
     });
+    const storage = new StorageDecoder(candidates, names).decode(
+      evidence,
+      resolved,
+    );
     await this.code.validateBlock(evidence);
     const display: ExecutionDisplay = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       chain: evidence.identity.chain,
       calls,
+      storage: storage.display,
     };
     return {
       display,
       diagnostics: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         identity: evidence.identity,
         bindings,
         decoding,
+        storage: storage.diagnostics,
         addresses: names.entries(),
       },
     };

@@ -2,7 +2,7 @@
 
 Transaction evidence and visualization for Ethereum mainnet and Base mainnet, built in TypeScript. Decoding will use ABI and compiler metadata rather than contract-specific rules. D2.js is the selected sequence renderer.
 
-The current checkpoint collects transaction evidence, resolves Sourcify metadata, and decodes ABI calls into readable JSON. Storage decoding, rendering, and inference are not implemented yet.
+The current checkpoint collects transaction evidence, resolves Sourcify metadata, and decodes ABI calls and declared Solidity storage into readable JSON. Rendering and inference are not implemented yet.
 
 ## Setup
 
@@ -54,7 +54,7 @@ The cache defaults to `.cache/metadata`. ABIs and layouts are stored separately 
 
 Missing metadata, an empty ABI/layout, an offline cache miss, and provider failure stay distinct. ABI entries and storage layouts are preserved as compiler artifacts; their decoding semantics are not validated yet. Solidity and Vyper layouts have different shapes. Sourcify names and verification quality are retained without deriving contract behavior from them. [Lookup fields](https://docs.sourcify.dev/blog/apiv2-lookup-endpoints/)
 
-Metadata lookup alone does not bind the metadata to historical execution. The decoding command below checks historical runtime code before using it. Storage attribution and asset interpretation remain pending.
+Metadata lookup alone does not bind the metadata to historical execution. The decoding command below checks historical runtime code before using it. Asset interpretation remains pending.
 
 Live lookup of the Ethereum fixture's nested `SubmitImports` contract returned 30 ABI entries and 25 storage declarations. The root target and the two checked Base addresses were not verified in Sourcify; those results do not establish coverage for other addresses.
 
@@ -81,9 +81,23 @@ Display JSON preserves every call's identity, parent, sender, target, code/stora
 
 The sibling `<output>.diagnostics.json` holds addresses, transaction identity, metadata bindings, and decode coverage separately. Only the display file is intended as input to the later YAML/image presentation step. `valueWei` records call semantics and is not an asset-transfer ledger; in particular, a delegated call's value must not be counted as another transfer. Both output paths must be new.
 
-`--metadata-dir` selects a metadata store. `--cached-metadata-only` skips Sourcify network lookups but still uses Alchemy for historical code checks. `--env-file` selects Alchemy credentials as with collection. Full offline decoding, signature-database fallback, receipt-event decoding, constructor decoding, storage decoding, and call compression are not included yet.
+`--metadata-dir` selects a metadata store. `--cached-metadata-only` skips Sourcify network lookups but still uses Alchemy for historical code checks. `--env-file` selects Alchemy credentials as with collection. Full offline decoding, signature-database fallback, receipt-event decoding, constructor decoding, and call compression are not included yet.
 
 Live validation decoded ABI arguments for 46 of 55 calls in the Ethereum fixture and 42 of 68 in the Base sample. This is ABI coverage, not a claim that opaque bytes were interpreted. Every original call edge remained present, and both display files contained no hex representations.
+
+## Storage decoding
+
+The same `decode` command now writes display schema version 2, adding `storage.status` and transaction-level `storage.changes`. To include storage, collect evidence with `--state-diff`. Existing evidence files remain version 1. No additional state reads or replay calls are needed for storage decoding.
+
+Layouts come from code-matched Solidity metadata for non-reverted, writable call contexts. Delegated code contributes its layout to the caller's storage context. Compatible declarations are deduplicated; overlapping conflicting declarations stay `storage`. Changes are not assigned to an individual call because net state diffs do not identify the writing frame. Historical code matching retains the block-boundary limitations described above.
+
+The decoder handles packed integers, booleans, addresses, structs, nested mappings, fixed arrays, and dynamic arrays whose length is present in the diff. It computes mapping slots from candidate keys and only attributes exact matches. Candidates come from call participants, calldata/return words, decoded ABI values, receipt topics/data, and changed storage words. Dynamic string/bytes keys use their unpadded data. These are generic compiler-layout rules, not protocol or token-interface rules. [Solidity layout specification](https://docs.soliditylang.org/en/latest/internals/layout_in_storage.html)
+
+Display changes carry the variable path, declared type, decoded before/after values when available, and exact integer deltas. An integer delta is a state change, not an inferred asset amount. Opaque bytes remain types; a matched mapping entry with an opaque key displays `[unknown]`. Unmatched slots and uncovered changed bits display only `storage`. Short strings decode when their storage word contains the complete valid UTF-8 value. Long string/bytes payloads remain types, and data words cannot be attributed if the required header is absent from the diff.
+
+Search is bounded: 512 candidate words, 128 keys per type, 256 array elements, 8 KiB of long byte/string payload locations, 24 levels, and 50,000 traversal visits per layout. Diagnostics flag limited searches. Exceeding traversal limits discards that account's partial attribution; unresolved changes remain present. Unknown dynamic-array lengths, missing/invalid layouts, Vyper layouts, and unsupported types do not trigger contract-specific heuristics.
+
+Live fixtures attributed 7 of 38 changed Ethereum slots and 19 of 22 Base slots. Some slots contain multiple changed packed fields. The remaining slots stayed `storage`, and both display files remained hex-free. Raw slot addresses and attribution status are recorded only in the sibling diagnostic file.
 
 ## Development
 
@@ -94,14 +108,14 @@ npm run build
 node dist/cli.js --help
 ```
 
-| Location          | Responsibility                                          |
-| ----------------- | ------------------------------------------------------- |
-| `src/config/`     | Chain definitions and credential loading                |
-| `src/collection/` | RPC access, validation, call normalization, cache       |
-| `src/metadata/`   | Sourcify lookup, provenance, deduplicated offline store |
-| `src/decoding/`   | Historical code checks, ABI decoding, readable calls    |
-| `src/cli.ts`      | CLI argument handling                                   |
-| `test/`           | Configuration, CLI, RPC, and collection checks          |
+| Location          | Responsibility                                               |
+| ----------------- | ------------------------------------------------------------ |
+| `src/config/`     | Chain definitions and credential loading                     |
+| `src/collection/` | RPC access, validation, call normalization, cache            |
+| `src/metadata/`   | Sourcify lookup, provenance, deduplicated offline store      |
+| `src/decoding/`   | Historical code checks, ABI/storage decoding, readable facts |
+| `src/cli.ts`      | CLI argument handling                                        |
+| `test/`           | Configuration, CLI, RPC, and collection checks               |
 
 Chain definitions and hash types come from viem. Each chain extends viem's definition with an Alchemy base URL; collection must use that explicit authenticated URL rather than viem's public default endpoint.
 
