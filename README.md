@@ -2,7 +2,7 @@
 
 Transaction evidence and visualization for Ethereum mainnet and Base mainnet, built in TypeScript. Decoding will use ABI and compiler metadata rather than contract-specific rules. D2.js is the selected sequence renderer.
 
-The current checkpoint collects transaction evidence and resolves contract metadata from Sourcify with offline caching. Decoding, rendering, and inference are not implemented yet.
+The current checkpoint collects transaction evidence, resolves Sourcify metadata, and decodes ABI calls into readable JSON. Storage decoding, rendering, and inference are not implemented yet.
 
 ## Setup
 
@@ -54,7 +54,7 @@ The cache defaults to `.cache/metadata`. ABIs and layouts are stored separately 
 
 Missing metadata, an empty ABI/layout, an offline cache miss, and provider failure stay distinct. ABI entries and storage layouts are preserved as compiler artifacts; their decoding semantics are not validated yet. Solidity and Vyper layouts have different shapes. Sourcify names and verification quality are retained without deriving contract behavior from them. [Lookup fields](https://docs.sourcify.dev/blog/apiv2-lookup-endpoints/)
 
-Metadata is not yet bound to the transaction's historical code. The later decoding step must establish that binding before trusting it for a call or storage context. This checkpoint does not attribute proxy storage, decode values, or interpret asset movements.
+Metadata lookup alone does not bind the metadata to historical execution. The decoding command below checks historical runtime code before using it. Storage attribution and asset interpretation remain pending.
 
 Live lookup of the Ethereum fixture's nested `SubmitImports` contract returned 30 ABI entries and 25 storage declarations. The root target and the two checked Base addresses were not verified in Sourcify; those results do not establish coverage for other addresses.
 
@@ -63,6 +63,27 @@ Live lookup of the Ethereum fixture's nested `SubmitImports` contract returned 3
 Sourcify publishes daily Parquet exports. `compiled_contracts.compilation_artifacts` contains ABI and storage layouts, and `verified_contracts` connects compilations to `contract_deployments`. A future importer can select Ethereum/Base deployments and reuse this store's deduplicated artifacts. Bulk import and deployment-date filtering are not implemented in this checkpoint. [Database schema](https://docs.sourcify.dev/docs/contract-dataset/sourcify-database/), [dataset download](https://docs.sourcify.dev/docs/repository/download-dataset/).
 
 The deployment cutoff must use on-chain deployment blocks and their timestamps, not verification time or dataset row creation time. Missing deployment details should remain unknown. Keep ABIs independently of the layout retention cutoff. The export's `sourcify_matches` table can contain multiple versions of a row; an importer must select the latest `updated_at` for each ID. Use the dataset for bulk work rather than crawling the lookup API. [Export semantics](https://docs.sourcify.dev/docs/repository/download-dataset/)
+
+## ABI decoding
+
+```sh
+npm run dev -- decode --input artifacts/ethereum-fixture.json \
+  --output artifacts/ethereum-decoded.json
+```
+
+The command revalidates saved evidence and rebuilds call frames from the raw traces. It resolves metadata for distinct called addresses and compares Sourcify's runtime-code hash with Alchemy's `eth_getCode` results at the previous and transaction block boundaries. It checks the canonical transaction block before and after decoding, and rejects mismatched code, later deployments, and addresses created or destroyed within the transaction. This uses standard RPC reads, without tracing or replaying the transaction again.
+
+The diagnostic label `block-code-match` describes those observations. It is not proof of the exact bytecode at every intra-block execution point: matching boundary code cannot exclude temporary intervening code changes. Missing historical code or unmatched metadata produces a generic fallback instead of an ABI-derived name.
+
+Function signatures come only from the matched contract ABI. The decoder handles overloads by selector and declines ambiguous selector collisions. It decodes inputs and successful outputs using viem, then re-encodes them to check exact correspondence. Malformed or noncanonical arguments retain their declared types. Unsupported ABI entries stay undecoded. Reverted outputs remain bytes; custom-error decoding is pending. No contract-specific or contract-type-specific rules are used.
+
+Display JSON preserves every call's identity, parent, sender, target, code/storage context, kind, value in wei, and revert/read-only status. Names come from matched compiler metadata; duplicate names receive distinct suffixes. Unknown addresses get stable aliases for that artifact, with `New_Contract` reserved for observed creations. Integer values are exact decimal strings. Addresses become names, arrays and tuples are recursive, and opaque bytes retain only their type. Long strings are capped at 512 characters, arrays over 256 items fall back to their type, and embedded hex text is removed.
+
+The sibling `<output>.diagnostics.json` holds addresses, transaction identity, metadata bindings, and decode coverage separately. Only the display file is intended as input to the later YAML/image presentation step. `valueWei` records call semantics and is not an asset-transfer ledger; in particular, a delegated call's value must not be counted as another transfer. Both output paths must be new.
+
+`--metadata-dir` selects a metadata store. `--cached-metadata-only` skips Sourcify network lookups but still uses Alchemy for historical code checks. `--env-file` selects Alchemy credentials as with collection. Full offline decoding, signature-database fallback, receipt-event decoding, constructor decoding, storage decoding, and call compression are not included yet.
+
+Live validation decoded ABI arguments for 46 of 55 calls in the Ethereum fixture and 42 of 68 in the Base sample. This is ABI coverage, not a claim that opaque bytes were interpreted. Every original call edge remained present, and both display files contained no hex representations.
 
 ## Development
 
@@ -78,6 +99,7 @@ node dist/cli.js --help
 | `src/config/`     | Chain definitions and credential loading                |
 | `src/collection/` | RPC access, validation, call normalization, cache       |
 | `src/metadata/`   | Sourcify lookup, provenance, deduplicated offline store |
+| `src/decoding/`   | Historical code checks, ABI decoding, readable calls    |
 | `src/cli.ts`      | CLI argument handling                                   |
 | `test/`           | Configuration, CLI, RPC, and collection checks          |
 

@@ -10,12 +10,15 @@ import { AlchemyTransactionCollector } from "./collection/collector.js";
 import { FileCollectionCache } from "./collection/cache.js";
 import { hash } from "./collection/validation.js";
 import { runMetadataCli } from "./metadata/cli.js";
+import { runDecodeCli } from "./decoding/cli.js";
 
 const help = `Usage: invariant-monitor check-config --chain <ethereum|base> [--env-file <path>]
        invariant-monitor collect --chain <ethereum|base> --tx <hash> --output <path>
          [--state-diff] [--no-cache] [--cache-dir <path>] [--env-file <path>]
        invariant-monitor metadata --chain <ethereum|base> --address <address> --output <path>
          [--offline | --refresh] [--cache-dir <path>]
+       invariant-monitor decode --input <evidence.json> --output <display.json>
+         [--metadata-dir <path>] [--cached-metadata-only] [--env-file <path>]
 
 check-config checks local configuration without network requests.
 collect saves raw evidence and normalized calls; output must not already exist.
@@ -25,6 +28,7 @@ Environment variables override values in .env.
 `;
 
 export async function runCli(args: string[]): Promise<string> {
+  if (args[0] === "decode") return runDecodeCli(args.slice(1));
   if (args[0] === "metadata") return runMetadataCli(args.slice(1));
   let parsed: ReturnType<typeof parseArgs>;
   try {
