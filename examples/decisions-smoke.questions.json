@@ -1,0 +1,7 @@
+[
+  {
+    "type": "predicate",
+    "name": "negative_token_movement",
+    "instructions": "Does the YAML report at least one negative net token movement for any participant? This is a report-reading smoke test, not a judgment about maliciousness."
+  }
+]

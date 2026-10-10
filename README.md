@@ -210,7 +210,9 @@ State entries require a decoded type and both values. Unknown slots and opaque v
 
 ## Decisions API
 
-`decide` sends an existing report's `outcomes.yaml` and `sequence.jpg` to Vercel. It does not recollect the transaction or send raw evidence, SVGs, or diagnostics. The YAML is unchanged; a short input preamble explains evidence and diagram semantics. Questions live in a separate JSON array with predicate, choice, or score definitions. Invariant questions, address groups, and benchmark design remain deferred.
+`decide` sends an existing report's `outcomes.yaml` and `sequence.jpg` to Vercel. It does not recollect the transaction or send raw evidence, SVGs, or diagnostics. The YAML is unchanged; a short input preamble explains evidence and diagram semantics. Questions live in a separate JSON array with predicate, choice, or score definitions.
+
+`examples/decisions-invariants.questions.json` contains three initial checks: passive-holder asset outflows, authorization transfers or substantial caller privilege gains, and substantial value creation without corresponding initiator input. Each uses an explicit `yes`/`no` choice, where `yes` means the invariant is broken, and includes “if not broken then say no.” These are candidate invariants, not a calibrated exploit classifier: ordinary approvals, delegated withdrawals, and legitimate issuance can require additional context. Missing authorization or valuation evidence limits what the model can establish. Address groups, protocol-specific questions, and benchmark calibration remain deferred.
 
 Vercel accepts images as base64 data URLs. Use an image-capable decision model such as `openai/gpt-6-luna-decisions`; `typesafe-ai/jev` is text-only and rejects these requests. The model slug is explicit, with no automatic fallback or image removal. [Vercel Decisions API](https://vercel.com/docs/ai-gateway/sdks-and-apis/openai-decisions)
 
@@ -218,18 +220,18 @@ Inspect the exact request locally first:
 
 ```sh
 npm run dev -- decide --report artifacts/ethereum-d29d1c8d-report \
-  --questions examples/decisions-smoke.questions.json \
+  --questions examples/decisions-invariants.questions.json \
   --model openai/gpt-6-luna-decisions \
   --output artifacts/decisions-request.json --dry-run
 ```
 
-The example question only checks report reading; it is not an exploit detector. A dry run needs no API key and makes no network request. It writes the full image payload, so the resulting JSON can be large.
+The separate `examples/decisions-smoke.questions.json` only checks report reading. A dry run needs no API key and makes no network request. It writes the full image payload, so the resulting JSON can be large.
 
 Add `AI_GATEWAY_API_KEY` to the ignored `.env`, then send the same report:
 
 ```sh
 npm run dev -- decide --report artifacts/ethereum-d29d1c8d-report \
-  --questions examples/decisions-smoke.questions.json \
+  --questions examples/decisions-invariants.questions.json \
   --model openai/gpt-6-luna-decisions \
   --output artifacts/decisions-result.json
 ```

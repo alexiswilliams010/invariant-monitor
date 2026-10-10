@@ -1,0 +1,29 @@
+[
+  {
+    "type": "choice",
+    "name": "passive_asset_outflow",
+    "instructions": "Invariant: Assets must not move from a passive holder to another address unless the original holder initiated or directed that movement. Does the transaction break this invariant? Use the asset movements and call sequence to assess the original holder's involvement; receiving a call alone does not establish that the holder initiated the movement. Answer yes if broken; if not broken then say no.",
+    "choices": [
+      { "value": "yes", "description": "The invariant is broken." },
+      { "value": "no", "description": "The invariant is not broken." }
+    ]
+  },
+  {
+    "type": "choice",
+    "name": "authorization_or_privilege_gain",
+    "instructions": "Invariant: Authorization must not move to a new address, and the caller must not gain substantial new privileges over another address's assets or contract controls. Does the transaction break this invariant? Consider decoded changes to ownership, roles, permissions, allowances, or control. A function name or attempted call alone does not establish a successful privilege change. Answer yes if broken; if not broken then say no.",
+    "choices": [
+      { "value": "yes", "description": "The invariant is broken." },
+      { "value": "no", "description": "The invariant is not broken." }
+    ]
+  },
+  {
+    "type": "choice",
+    "name": "unbacked_value_creation",
+    "instructions": "Invariant: Substantial economic value must not be created or credited within a system without corresponding value provided by the initiator. Does the transaction break this invariant? Consider asset movements and decoded accounting changes, including any backing, collateral, or repayment obligations shown. Large token counts or minting alone do not establish economic value; do not assume equal value across different assets or invent missing prices. Answer yes if broken; if not broken then say no.",
+    "choices": [
+      { "value": "yes", "description": "The invariant is broken." },
+      { "value": "no", "description": "The invariant is not broken." }
+    ]
+  }
+]
