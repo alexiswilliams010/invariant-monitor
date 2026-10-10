@@ -1,4 +1,10 @@
-import type { EIP1193RequestFn, Hash, PublicRpcSchema } from "viem";
+import type {
+  Address,
+  EIP1193RequestFn,
+  Hash,
+  Hex,
+  PublicRpcSchema,
+} from "viem";
 import type { ChainName } from "../config/chains.js";
 
 export type JsonValue =
@@ -32,6 +38,40 @@ export interface TransactionEvidence {
   readonly block: JsonObject;
   readonly traces: readonly JsonObject[];
   readonly stateDiff: StateDiffEvidence;
+  readonly calls: readonly CallFrame[];
+}
+
+export interface CallFrame {
+  readonly id: string;
+  readonly parentId: string | null;
+  readonly traceAddress: readonly number[];
+  readonly type:
+    | "CALL"
+    | "STATICCALL"
+    | "DELEGATECALL"
+    | "CALLCODE"
+    | "CREATE"
+    | "CREATE2"
+    | "SELFDESTRUCT";
+  readonly from: Address;
+  readonly to: Address | null;
+  readonly storageContext: Address | null;
+  readonly input: Hex;
+  readonly output: Hex;
+  readonly value: string;
+  readonly reverted: boolean;
+  readonly readOnly: boolean;
+}
+
+export interface CollectionCache {
+  read(
+    identity: TransactionIdentity,
+    includeStateDiff: boolean,
+  ): Promise<unknown | undefined>;
+  write(
+    evidence: TransactionEvidence,
+    includeStateDiff: boolean,
+  ): Promise<void>;
 }
 
 export type CollectionRpcSchema = [
