@@ -4,13 +4,13 @@ import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 import { loadEnvironment } from "../config/environment.js";
 import { HttpDecisionsClient } from "./client.js";
-import { DecisionReport } from "./report.js";
+import { DecisionReport, type InputMode } from "./report.js";
 import type { DecisionsClient, ImageDetail } from "./types.js";
 import { parseQuestions } from "./validation.js";
 
 const help = `Usage: invariant-monitor decide --report <analyze-directory> --questions <questions.json>
   --model <provider/model> --output <new-json-file> [--dry-run]
-  [--detail low|high|auto|original] [--env-file <path>]
+  [--input-mode yaml|image|both] [--detail low|high|auto|original] [--env-file <path>]
 
 Sends outcomes.yaml and sequence.jpg to Vercel's Decisions API.
 --dry-run saves the exact request without credentials or network access.
@@ -34,6 +34,7 @@ export async function runDecideCli(
         model: { type: "string" },
         output: { type: "string" },
         detail: { type: "string", default: "high" },
+        "input-mode": { type: "string", default: "both" },
         "env-file": { type: "string" },
         "dry-run": { type: "boolean" },
         help: { type: "boolean", short: "h" },
@@ -52,6 +53,9 @@ export async function runDecideCli(
     throw new Error("Specify --report, --questions, --model, and --output.");
   if (!["low", "high", "auto", "original"].includes(values.detail))
     throw new Error("Invalid image --detail.");
+  if (!["yaml", "image", "both"].includes(values["input-mode"]))
+    throw new Error("Invalid --input-mode; use yaml, image, or both.");
+  const inputMode = values["input-mode"] as InputMode;
   let input: unknown;
   try {
     input = JSON.parse(await readFile(values.questions, "utf8"));
@@ -64,6 +68,7 @@ export async function runDecideCli(
     values.model.trim(),
     questions,
     values.detail as ImageDetail,
+    inputMode,
   );
   await mkdir(dirname(values.output), { recursive: true });
   const file = await open(values.output, "wx");
@@ -84,7 +89,8 @@ export async function runDecideCli(
         requestedModel: request.model,
         questions,
         detail: values.detail,
-        inputs: report.fingerprints(),
+        inputMode,
+        inputs: report.fingerprints(inputMode),
         requestSha256: createHash("sha256")
           .update(JSON.stringify(request))
           .digest("hex"),

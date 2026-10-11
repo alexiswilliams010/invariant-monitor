@@ -1,4 +1,7 @@
 import { formatUnits } from "viem";
+import { chains } from "../config/chains.js";
+import { nativeTransfers } from "./native.js";
+import { numericStateDelta } from "./state-delta.js";
 import { stringify } from "yaml";
 import { displayText } from "../decoding/presentation.js";
 import type { StorageChange } from "../decoding/storage.js";
@@ -6,6 +9,7 @@ import { ParticipantNameResolver } from "../rendering/names.js";
 import type { DiagramInput } from "../rendering/sequence.js";
 import type { InterpretationContext } from "./types.js";
 import type { TokenInterpretation } from "./tokens.js";
+import { callContextFacts, type CallContextFact } from "./call-context.js";
 import {
   TokenBalanceReader,
   balanceKey,
@@ -17,7 +21,11 @@ export interface OutcomeDocument {
   version: 1;
   chain: string;
   status: "success" | "reverted";
+  initiator: string;
+  call_context: CallContextFact[];
   token_net_from_transfers: Record<string, string[]>;
+  native_transfers: { from: string; to: string; amount: string }[];
+  native_net_from_transfers: Record<string, string>;
   decoded_state: Record<
     string,
     {
@@ -25,6 +33,7 @@ export interface OutcomeDocument {
       type: string;
       before: string | boolean;
       after: string | boolean;
+      delta?: string;
     }[]
   >;
 }
@@ -175,23 +184,43 @@ export class OutcomeExporter {
             ? name(value)
             : displayText(value);
       const changes = state.get(contract) ?? [];
+      const delta = numericStateDelta(change.type, change.before, change.after);
       changes.push({
         field,
         type: displayText(change.type),
         before: value(change.before),
         after: value(change.after),
+        ...(delta !== undefined ? { delta } : {}),
       });
       state.set(contract, changes);
       stateReferences.push({ contract, field, changeId: change.id });
     }
+    const callContext = callContextFacts(context, name);
+    const native = nativeTransfers(context.evidence.calls);
+    const currency = chains[context.evidence.identity.chain].nativeCurrency;
+    const nativeAmount = (wei: bigint) =>
+      `${formatUnits(wei, currency.decimals)} ${currency.symbol}`;
     const document: OutcomeDocument = {
       version: 1,
       chain: context.evidence.identity.chain,
+      initiator: callContext.initiator,
+      call_context: callContext.calls,
       status: context.evidence.calls.find((call) => call.parentId === null)
         ?.reverted
         ? "reverted"
         : "success",
       token_net_from_transfers: Object.fromEntries(tokenNet),
+      native_transfers: native.movements.map((movement) => ({
+        from: holderName(movement.from),
+        to: holderName(movement.to),
+        amount: nativeAmount(BigInt(movement.amountWei)),
+      })),
+      native_net_from_transfers: Object.fromEntries(
+        native.totals.map(([holder, amount]) => [
+          holderName(holder),
+          `${amount > 0n ? "+" : ""}${nativeAmount(amount)}`,
+        ]),
+      ),
       decoded_state: Object.fromEntries(state),
     };
     return {
@@ -205,7 +234,9 @@ export class OutcomeExporter {
         },
         identity: context.evidence.identity,
         tokenReferences,
+        nativeReferences: native.movements,
         stateReferences,
+        callContextReferences: callContext.references,
         names: [...names],
       },
     };

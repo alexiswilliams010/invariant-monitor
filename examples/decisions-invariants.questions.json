@@ -1,29 +1,104 @@
 [
   {
     "type": "choice",
-    "name": "passive_asset_outflow",
-    "instructions": "Invariant: Assets must not move from a passive holder to another address unless the original holder initiated or directed that movement. Does the transaction break this invariant? Use the asset movements and call sequence to assess the original holder's involvement; receiving a call alone does not establish that the holder initiated the movement. Answer yes if broken; if not broken then say no.",
+    "name": "asset_outflow_suspicious",
+    "instructions": "Invariant: Assets must leave an owner or custodian only under valid authority or entitlement. Does the observed behavior raise a concrete concern that this invariant may be broken? Assess who directed the movement and who benefits. Unexplained depletion or diversion may be suspicious. Valid withdrawals and liquidations can move assets without the custodian initiating the transaction. Negative balances or a third-party caller alone are not an anomaly. Weigh the visible pattern against ordinary explanations. This is a suspicion assessment, not a demand for proof. Missing data alone is not suspicious; successful execution or a familiar function name alone is not reassurance.",
     "choices": [
-      { "value": "yes", "description": "The invariant is broken." },
-      { "value": "no", "description": "The invariant is not broken." }
+      {
+        "value": "yes",
+        "description": "The observed pattern warrants investigation for a possible violation."
+      },
+      {
+        "value": "no",
+        "description": "The observed pattern does not raise a concrete concern."
+      }
     ]
   },
   {
     "type": "choice",
-    "name": "authorization_or_privilege_gain",
-    "instructions": "Invariant: Authorization must not move to a new address, and the caller must not gain substantial new privileges over another address's assets or contract controls. Does the transaction break this invariant? Consider decoded changes to ownership, roles, permissions, allowances, or control. A function name or attempted call alone does not establish a successful privilege change. Answer yes if broken; if not broken then say no.",
+    "name": "asset_outflow_violation",
+    "instructions": "Invariant: Assets must leave an owner or custodian only under valid authority or entitlement. Is it broken in this transaction? Assess who directed the movement and who benefits. Unexplained depletion or diversion may be suspicious. Valid withdrawals and liquidations can move assets without the custodian initiating the transaction. Negative balances or a third-party caller alone are not an anomaly. Choose yes when the evidence supports a violation, no when it supports legitimate behavior, or insufficient_evidence when the distinction depends on missing authority, entitlement, backing, or valuation information. Judge from the supplied evidence, not a suspicion label. if not broken then say no.",
     "choices": [
-      { "value": "yes", "description": "The invariant is broken." },
-      { "value": "no", "description": "The invariant is not broken." }
+      {
+        "value": "yes",
+        "description": "Evidence supports a violation."
+      },
+      {
+        "value": "no",
+        "description": "Evidence supports legitimate behavior."
+      },
+      {
+        "value": "insufficient_evidence",
+        "description": "The available evidence cannot distinguish violation from legitimate behavior."
+      }
     ]
   },
   {
     "type": "choice",
-    "name": "unbacked_value_creation",
-    "instructions": "Invariant: Substantial economic value must not be created or credited within a system without corresponding value provided by the initiator. Does the transaction break this invariant? Consider asset movements and decoded accounting changes, including any backing, collateral, or repayment obligations shown. Large token counts or minting alone do not establish economic value; do not assume equal value across different assets or invent missing prices. Answer yes if broken; if not broken then say no.",
+    "name": "authorization_suspicious",
+    "instructions": "Invariant: Privileges must be granted and exercised only with valid authority. Does the observed behavior raise a concrete concern that this invariant may be broken? Assess controller, grantee, and scope. Impersonation, unexpected control over another holder, or permissions followed by unexplained spending may be suspicious. Owner-directed grants can be legitimate; decreasing allowances are not privilege gains. Weigh the visible pattern against ordinary explanations. This is a suspicion assessment, not a demand for proof. Missing data alone is not suspicious; successful execution or a familiar function name alone is not reassurance.",
     "choices": [
-      { "value": "yes", "description": "The invariant is broken." },
-      { "value": "no", "description": "The invariant is not broken." }
+      {
+        "value": "yes",
+        "description": "The observed pattern warrants investigation for a possible violation."
+      },
+      {
+        "value": "no",
+        "description": "The observed pattern does not raise a concrete concern."
+      }
+    ]
+  },
+  {
+    "type": "choice",
+    "name": "authorization_violation",
+    "instructions": "Invariant: Privileges must be granted and exercised only with valid authority. Is it broken in this transaction? Assess controller, grantee, and scope. Impersonation, unexpected control over another holder, or permissions followed by unexplained spending may be suspicious. Owner-directed grants can be legitimate; decreasing allowances are not privilege gains. Choose yes when the evidence supports a violation, no when it supports legitimate behavior, or insufficient_evidence when the distinction depends on missing authority, entitlement, backing, or valuation information. Judge from the supplied evidence, not a suspicion label. if not broken then say no.",
+    "choices": [
+      {
+        "value": "yes",
+        "description": "Evidence supports a violation."
+      },
+      {
+        "value": "no",
+        "description": "Evidence supports legitimate behavior."
+      },
+      {
+        "value": "insufficient_evidence",
+        "description": "The available evidence cannot distinguish violation from legitimate behavior."
+      }
+    ]
+  },
+  {
+    "type": "choice",
+    "name": "value_backing_suspicious",
+    "instructions": "Invariant: Redeemable claims and payouts must not exceed valid backing or entitlement. Does the observed behavior raise a concrete concern that this invariant may be broken? Assess receipts, obligations, redeemed claims, and beneficiaries. Unexplained large payouts or duplicated credit may be suspicious. Prior deposits, collateral, debt, and earned liquidation incentives can justify receipts without a current deposit. Do not infer prices from token counts. Weigh the visible pattern against ordinary explanations. This is a suspicion assessment, not a demand for proof. Missing data alone is not suspicious; successful execution or a familiar function name alone is not reassurance.",
+    "choices": [
+      {
+        "value": "yes",
+        "description": "The observed pattern warrants investigation for a possible violation."
+      },
+      {
+        "value": "no",
+        "description": "The observed pattern does not raise a concrete concern."
+      }
+    ]
+  },
+  {
+    "type": "choice",
+    "name": "value_backing_violation",
+    "instructions": "Invariant: Redeemable claims and payouts must not exceed valid backing or entitlement. Is it broken in this transaction? Assess receipts, obligations, redeemed claims, and beneficiaries. Unexplained large payouts or duplicated credit may be suspicious. Prior deposits, collateral, debt, and earned liquidation incentives can justify receipts without a current deposit. Do not infer prices from token counts. Choose yes when the evidence supports a violation, no when it supports legitimate behavior, or insufficient_evidence when the distinction depends on missing authority, entitlement, backing, or valuation information. Judge from the supplied evidence, not a suspicion label. if not broken then say no.",
+    "choices": [
+      {
+        "value": "yes",
+        "description": "Evidence supports a violation."
+      },
+      {
+        "value": "no",
+        "description": "Evidence supports legitimate behavior."
+      },
+      {
+        "value": "insufficient_evidence",
+        "description": "The available evidence cannot distinguish violation from legitimate behavior."
+      }
     ]
   }
 ]

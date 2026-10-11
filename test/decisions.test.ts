@@ -224,6 +224,23 @@ test("report CLI dry run embeds the exact JPEG and excludes evidence and credent
     );
     assert.ok(payload.input[0].content[0].text.endsWith(yaml));
     assert.ok(!JSON.stringify(payload).includes("do-not-send-evidence"));
+    const report = await DecisionReport.load(directory);
+    for (const mode of ["yaml", "image", "both"] as const) {
+      const variant = report.request("provider/model", questions, "high", mode);
+      const parts = variant.input[0]!.content;
+      assert.equal(
+        parts.some((part) => part.type === "input_image"),
+        mode !== "yaml",
+      );
+      assert.equal(
+        parts.some(
+          (part) => part.type === "input_text" && part.text.includes(yaml),
+        ),
+        mode !== "image",
+      );
+      assert.equal("yamlSha256" in report.fingerprints(mode), mode !== "image");
+      assert.equal("imageSha256" in report.fingerprints(mode), mode !== "yaml");
+    }
     await assert.rejects(
       runDecideCli([...args, "--env-file", join(directory, ".env")], () => {
         calls++;

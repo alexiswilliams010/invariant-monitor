@@ -3,6 +3,9 @@ import { test } from "node:test";
 import { parse } from "yaml";
 import { encodeFunctionData, encodeFunctionResult, erc20Abi } from "viem";
 import { OutcomeExporter } from "../src/interpretation/outcomes.js";
+import { callContextFacts } from "../src/interpretation/call-context.js";
+import { nativeTransfers } from "../src/interpretation/native.js";
+import { numericStateDelta } from "../src/interpretation/state-delta.js";
 import type { InterpretationContext } from "../src/interpretation/types.js";
 import type { TokenInterpretation } from "../src/interpretation/tokens.js";
 import { AssetFlowProjector } from "../src/interpretation/asset-view.js";
@@ -183,7 +186,9 @@ test("YAML sums exact net amounts per asset and holder, including minting and se
     Safe: ["+20 USD", "+900719925474099312345 units USD_2"],
   });
   assert.deepEqual(parse(result.yaml), result.document);
-  assert.doesNotMatch(result.yaml, /0x|execute|logIndex|callId/);
+  assert.doesNotMatch(result.yaml, /0x|logIndex|callId/);
+  assert.equal(result.document.initiator, "Owner");
+  assert.equal(result.document.call_context[0]?.function, "execute");
   assert.equal(result.diagnostics.tokenReferences.length, 3);
 });
 test("decoded state preserves exact scalar types and shared names while omitting unknown values", () => {
@@ -194,6 +199,7 @@ test("decoded state preserves exact scalar types and shared names while omitting
       type: "uint256",
       before: "900719925474099312345",
       after: "900719925474099312346",
+      delta: "+1",
     },
     { field: "flag", type: "bool", before: false, after: true },
   ]);
@@ -222,6 +228,128 @@ test("zero totals disappear and unavailable state stays explicit", () => {
   assert.deepEqual(result.document.decoded_state, {});
   assert.equal(result.diagnostics.coverage.state_diff, "unavailable");
 });
+test("native transfers net routed value without counting delegation or reverted effects", () => {
+  const root = context().evidence.calls[0]!;
+  const calls = [
+    { ...root, value: "1000000000000000000" },
+    {
+      ...root,
+      id: "0",
+      parentId: "root",
+      from: b,
+      to: token,
+      value: "1000000000000000000",
+    },
+    {
+      ...root,
+      id: "1",
+      parentId: "root",
+      type: "DELEGATECALL" as const,
+      value: "1000000000000000000",
+    },
+    {
+      ...root,
+      id: "2",
+      parentId: "root",
+      type: "CALLCODE" as const,
+      value: "1000000000000000000",
+    },
+    { ...root, id: "3", parentId: "root", reverted: true, value: "100" },
+    { ...root, id: "4", parentId: "root", from: b, to: b, value: "100" },
+  ];
+  const result = nativeTransfers(calls);
+  assert.equal(result.movements.length, 2);
+  assert.deepEqual(result.totals, [
+    [a, -1000000000000000000n],
+    [token, 1000000000000000000n],
+  ]);
+  assert.equal(
+    nativeTransfers(calls.map((call) => ({ ...call, reverted: true })))
+      .movements.length,
+    0,
+  );
+  const creation = nativeTransfers([
+    { ...root, type: "CREATE" as const, value: "5" },
+    { ...root, type: "CREATE2" as const, value: "7" },
+    { ...root, type: "SELFDESTRUCT" as const, value: "11" },
+  ]);
+  assert.deepEqual(creation.totals, [
+    [a, -23n],
+    [b, 23n],
+  ]);
+  const exported = build({
+    ...context(),
+    evidence: {
+      ...context().evidence,
+      calls: [{ ...root, value: "10590535811" }],
+    },
+  });
+  assert.deepEqual(exported.document.native_net_from_transfers, {
+    Owner: "-0.000000010590535811 ETH",
+    Safe: "+0.000000010590535811 ETH",
+  });
+});
+
+test("numeric state deltas retain integer precision without interpreting address or boolean values", () => {
+  const before = (2n ** 256n - 1n).toString();
+  assert.equal(
+    numericStateDelta(
+      "uint256",
+      before,
+      (BigInt(before) - 8230000n).toString(),
+    ),
+    "-8230000",
+  );
+  assert.equal(
+    numericStateDelta("int256", "-9007199254740993000", "9007199254740993000"),
+    "+18014398509481986000",
+  );
+  assert.equal(numericStateDelta("bool", false, true), undefined);
+  assert.equal(numericStateDelta("address", "123", "456"), undefined);
+  assert.equal(numericStateDelta("uint256", "unknown", "5"), undefined);
+});
+
+test("call context retains more than 24 calls and nested argument values", () => {
+  const input = context();
+  const values = Array.from({ length: 30 }, (_, index) => ({
+    name: "",
+    type: "address",
+    value: index === 29 ? "OtherToken" : "Account",
+  }));
+  const calls = Array.from({ length: 37 }, (_, index) => ({
+    ...input.display.calls[0]!,
+    id: index === 0 ? "root" : String(index),
+    parentId: index === 0 ? null : "root",
+    args: [{ name: "recipients", type: "address[]", value: values }],
+  }));
+  const result = callContextFacts(
+    {
+      ...input,
+      display: { ...input.display, calls },
+      evidence: {
+        ...input.evidence,
+        calls: calls.map((call) => ({
+          ...input.evidence.calls[0]!,
+          id: call.id,
+          parentId: call.parentId,
+        })),
+      },
+    },
+    (name) => name,
+  );
+  assert.equal(result.calls.length, 37);
+  assert.equal(result.references.length, 37);
+  assert.equal(
+    (
+      result.calls[36]!.arguments["recipients (address[])"] as Record<
+        string,
+        unknown
+      >
+    )["arg30 (address)"],
+    "OtherToken",
+  );
+});
+
 test("YAML safely quotes arbitrary metadata and preserves evidence", () => {
   const input = context();
   const before = structuredClone(input);
@@ -235,4 +363,126 @@ test("YAML safely quotes arbitrary metadata and preserves evidence", () => {
   });
   assert.deepEqual(parse(result.yaml), result.document);
   assert.deepEqual(input, before);
+});
+
+test("call context preserves initiator, delegation sender, intermediate path and ABI argument names", () => {
+  const input = context();
+  const root = input.evidence.calls[0]!;
+  const displayRoot = input.display.calls[0]!;
+  const enriched: InterpretationContext = {
+    ...input,
+    addresses: [
+      { address: a, name: "User" },
+      { address: b, name: "Router" },
+      { address: token, name: "Proxy" },
+      { address: second, name: "Implementation" },
+    ],
+    evidence: {
+      ...input.evidence,
+      calls: [
+        root,
+        {
+          ...root,
+          id: "0",
+          parentId: "root",
+          from: b,
+          to: token,
+          storageContext: token,
+        },
+        {
+          ...root,
+          id: "0.0",
+          parentId: "0",
+          type: "DELEGATECALL",
+          from: token,
+          to: second,
+          storageContext: token,
+        },
+      ],
+    },
+    display: {
+      ...input.display,
+      calls: [
+        {
+          ...displayRoot,
+          from: "User",
+          to: "Router",
+          storageContext: "Router",
+        },
+        {
+          ...displayRoot,
+          id: "0",
+          parentId: "root",
+          from: "Router",
+          to: "Proxy",
+          storageContext: "Proxy",
+        },
+        {
+          ...displayRoot,
+          id: "0.0",
+          parentId: "0",
+          kind: "DELEGATECALL",
+          from: "Proxy",
+          to: "Implementation",
+          storageContext: "Proxy",
+          action: "grant",
+          args: [
+            { name: "authorized", type: "address", value: "User" },
+            { name: "enabled", type: "bool", value: true },
+            { name: "data", type: "bytes" },
+          ],
+        },
+      ],
+    },
+  };
+  const result = callContextFacts(enriched, (name) => name);
+  assert.equal(result.initiator, "User");
+  assert.deepEqual(result.calls[2], {
+    caller: "Router",
+    via: ["Router"],
+    contract: "Proxy",
+    code: "Implementation",
+    function: "grant",
+    arguments: {
+      "authorized (address)": "User",
+      "enabled (bool)": true,
+      "data (bytes)": "bytes",
+    },
+  });
+  assert.equal(result.references[2]?.callId, "0.0");
+  assert.ok(!JSON.stringify(result.calls).includes("0x"));
+  const deep = {
+    ...enriched,
+    evidence: {
+      ...enriched.evidence,
+      calls: [
+        ...enriched.evidence.calls,
+        { ...root, id: "0.0.0", parentId: "0.0" },
+        {
+          ...root,
+          id: "0.0.0.0",
+          parentId: "0.0.0",
+          type: "DELEGATECALL" as const,
+        },
+      ],
+    },
+    display: {
+      ...enriched.display,
+      calls: [
+        ...enriched.display.calls,
+        { ...displayRoot, id: "0.0.0", parentId: "0.0", action: "deeper" },
+        {
+          ...displayRoot,
+          id: "0.0.0.0",
+          parentId: "0.0.0",
+          kind: "DELEGATECALL" as const,
+          action: "deeperDelegate",
+        },
+      ],
+    },
+  };
+  assert.deepEqual(
+    callContextFacts(deep, (name) => name),
+    result,
+  );
 });
