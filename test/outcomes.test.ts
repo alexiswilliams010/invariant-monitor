@@ -188,6 +188,10 @@ test("YAML sums exact net amounts per asset and holder, including minting and se
   assert.deepEqual(parse(result.yaml), result.document);
   assert.doesNotMatch(result.yaml, /0x|logIndex|callId/);
   assert.equal(result.document.initiator, "Owner");
+  assert.deepEqual(result.document.asset_payment_summary.addresses, [
+    "initiator (Owner): lost 20 USD",
+    "Safe: gained 20 USD, 900719925474099312345 units USD_2",
+  ]);
   assert.equal(result.document.call_context[0]?.function, "execute");
   assert.equal(result.diagnostics.tokenReferences.length, 3);
 });

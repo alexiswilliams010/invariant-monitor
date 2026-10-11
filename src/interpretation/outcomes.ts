@@ -10,6 +10,7 @@ import type { DiagramInput } from "../rendering/sequence.js";
 import type { InterpretationContext } from "./types.js";
 import type { TokenInterpretation } from "./tokens.js";
 import { callContextFacts, type CallContextFact } from "./call-context.js";
+import { assetPaymentSummary, type AssetPaymentNet } from "./asset-payment.js";
 import {
   TokenBalanceReader,
   balanceKey,
@@ -22,6 +23,10 @@ export interface OutcomeDocument {
   chain: string;
   status: "success" | "reverted";
   initiator: string;
+  asset_payment_summary: {
+    scope: string;
+    addresses: string[];
+  };
   call_context: CallContextFact[];
   token_net_from_transfers: Record<string, string[]>;
   native_transfers: { from: string; to: string; amount: string }[];
@@ -121,6 +126,7 @@ export class OutcomeExporter {
       ]),
     );
     const tokenNet = new Map<string, string[]>();
+    const paymentNet: AssetPaymentNet[] = [];
     const balances = new TokenBalanceReader().read(context.evidence.calls);
     const tokenReferences: {
       holder: string;
@@ -149,6 +155,11 @@ export class OutcomeExporter {
           `${total.amount > 0n ? "+" : ""}${quantity} ${displayText(label)}${percentage ? ` (${percentage})` : ""}`,
         );
         tokenNet.set(holderLabel, values);
+        paymentNet.push({
+          holder: holderLabel,
+          direction: total.amount > 0n ? "gain" : "loss",
+          quantity: `${quantity.replace(/^-/, "")} ${displayText(label)}`,
+        });
         tokenReferences.push({
           holder,
           asset,
@@ -200,10 +211,33 @@ export class OutcomeExporter {
     const currency = chains[context.evidence.identity.chain].nativeCurrency;
     const nativeAmount = (wei: bigint) =>
       `${formatUnits(wei, currency.decimals)} ${currency.symbol}`;
+    for (const [holder, amount] of native.totals)
+      paymentNet.push({
+        holder: holderName(holder),
+        direction: amount > 0n ? "gain" : "loss",
+        quantity: nativeAmount(amount < 0n ? -amount : amount),
+      });
+    const paymentMovements = [
+      ...tokens.movements.filter((movement) => BigInt(movement.amount) > 0n),
+      ...native.movements,
+    ].map((movement) => ({
+      from: movement.from === null ? null : holderName(movement.from),
+      to: movement.to === null ? null : holderName(movement.to),
+    }));
     const document: OutcomeDocument = {
       version: 1,
       chain: context.evidence.identity.chain,
       initiator: callContext.initiator,
+      asset_payment_summary: {
+        scope:
+          "Recorded token and native movements in this transaction only; amounts are net; gas excluded.",
+        addresses: assetPaymentSummary(
+          callContext.initiator,
+          paymentNet,
+          paymentMovements,
+          currency.symbol,
+        ),
+      },
       call_context: callContext.calls,
       status: context.evidence.calls.find((call) => call.parentId === null)
         ?.reverted
