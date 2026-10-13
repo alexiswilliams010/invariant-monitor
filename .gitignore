@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 jevscan-chainmonitor
 node_modules/
 dist/
