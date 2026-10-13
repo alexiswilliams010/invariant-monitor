@@ -95,6 +95,16 @@ export class TransactionPipeline {
         metadata: [...tokens.metadata],
         hiddenReadIds: tokens.hiddenReadIds,
         unplacedMovements: projection.unplacedMovements,
+        image: {
+          stage: rendered.stage,
+          baselineRows: rendered.baselineRows,
+          rows: rendered.rows,
+          width: rendered.width,
+          height: rendered.height,
+          scale: rendered.scale,
+          quality: rendered.quality,
+          bytes: rendered.jpeg.length,
+        },
         outcomes: outcomes.diagnostics,
       }),
     };

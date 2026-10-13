@@ -132,7 +132,7 @@ test("proxy emission creates a holder-to-holder asset arrow, never an implementa
   assert.equal(result.movements[0]?.candidateCallId, "root");
   assert.equal(result.facts[0]?.evidence.basis, "event-reported");
   const view = new AssetFlowProjector().project(input, result);
-  const source = new SequenceDiagramBuilder().build(view);
+  const source = new SequenceDiagramBuilder({ mode: "always" }).build(view);
   assert.match(source, /0.00002 USD/);
   assert.match(source, /Holder/);
   assert.match(source, /Recipient/);
@@ -164,10 +164,10 @@ test("two proxies sharing implementation code retain independent token identitie
     result.movements.map((m) => m.candidateCallId),
     ["a", "b"],
   );
-  const source = new SequenceDiagramBuilder().build(
+  const source = new SequenceDiagramBuilder({ mode: "always" }).build(
     new AssetFlowProjector().project(input, result),
   );
-  assert.match(source, /0.00002 USD"/);
+  assert.match(source, /0.00002 USD\b/);
   assert.match(source, /0.00002 USD_2"/);
 });
 
@@ -211,8 +211,8 @@ test("calls without events never become token movements; false, reverted, callba
   assert.equal(result.movements[0]?.candidateCallId, undefined);
   const view = new AssetFlowProjector().project(input, result);
   assert.equal(view.unplacedMovements?.length, 1);
-  const source = new SequenceDiagramBuilder().build(view);
-  assert.match(source, /Reported transfers · call position unknown/);
+  const source = new SequenceDiagramBuilder({ mode: "always" }).build(view);
+  assert.doesNotMatch(source, /Reported transfers · call position unknown/);
   assert.match(source, /transfer/);
 });
 
@@ -224,7 +224,7 @@ test("unplaced zero transfers remain in evidence but not in the image", async ()
   assert.equal(result.movements[0]?.amount, "0");
   assert.deepEqual(view.unplacedMovements, []);
   assert.doesNotMatch(
-    new SequenceDiagramBuilder().build(view),
+    new SequenceDiagramBuilder({ mode: "always" }).build(view),
     /Reported transfers|0 units/,
   );
 });
@@ -266,9 +266,16 @@ test("unknown decimals retain raw units and repeated representatives do not stan
   const result = await new StandardTokenInterpreter().interpret(input);
   const view = new AssetFlowProjector().project(input, result);
   assert.equal(view.unplacedMovements?.length, 2);
-  const source = new SequenceDiagramBuilder().build(view);
-  assert.match(source, /20 units Asset_1/);
-  assert.match(source, /30 units Asset_1/);
+  const source = new SequenceDiagramBuilder({ mode: "always" }).build(view);
+  assert.equal(
+    view.calls.get(view.unplacedMovements![0]!)?.action,
+    "20 units Asset_1",
+  );
+  assert.equal(
+    view.calls.get(view.unplacedMovements![1]!)?.action,
+    "30 units Asset_1",
+  );
+  assert.doesNotMatch(source, /units Asset_1/);
   assert.match(source, /transfer ×2/);
 });
 

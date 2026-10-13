@@ -55,10 +55,12 @@ function fixture() {
 }
 
 test("sequence source preserves nested endpoints and repeated bodies", () => {
-  const source = new SequenceDiagramBuilder().build(readDiagram(fixture()));
-  assert.match(source, /p0 -> p1: "execute"/);
-  assert.match(source, /p1 -> p2: "swap(?: ×20)?"/);
-  assert.equal(source.match(/style.stroke-dash/g)?.length, 2);
+  const source = new SequenceDiagramBuilder({ mode: "always" }).build(
+    readDiagram(fixture()),
+  );
+  assert.match(source, /p0 <-> p1: "execute"/);
+  assert.match(source, /p1 <-> p2: "swap(?: ×20)?"/);
+  assert.equal(source.match(/ <-> /g)?.length, 2);
   assert.match(source, /"swap ×20"/);
   assert.doesNotMatch(source, /diff args|diff returns/);
   assert.equal(source.match(/: "swap ×20"/g)?.length, 1);
@@ -119,17 +121,17 @@ test("omitting self-calls preserves nested endpoints and the caller's return", a
       },
     ],
   });
-  const rendered = await new D2SequenceRenderer().render(input);
+  const rendered = await new D2SequenceRenderer(
+    new SequenceDiagramBuilder({ mode: "always" }),
+  ).render(input);
   assert.doesNotMatch(rendered.source, /self-call|p1.self0/);
   assert.doesNotMatch(rendered.source, /p1 -> p1/);
-  assert.match(rendered.source, /p1 -> p2: "swap"/);
-  assert.equal(rendered.source.match(/style.stroke-dash/g)?.length, 2);
+  assert.match(rendered.source, /p1 <-> p2: "swap"/);
+  assert.equal(rendered.source.match(/ <-> /g)?.length, 2);
   assert.ok(
-    rendered.source.indexOf("p0 -> p1") < rendered.source.indexOf("p1 -> p2"),
+    rendered.source.indexOf("p0 <-> p1") < rendered.source.indexOf("p1 <-> p2"),
   );
-  assert.ok(
-    rendered.source.indexOf("p2 -> p1") < rendered.source.indexOf("p1 -> p0"),
-  );
+  assert.doesNotMatch(rendered.source, /stroke-dash/);
   assert.doesNotMatch(rendered.svg, /self-call/);
 });
 
@@ -158,9 +160,11 @@ test("D2 compiles literal labels and exports JPEG at the requested scale", async
 test("selfdestruct has no synthetic return and failed creations stay distinct", () => {
   const value = fixture();
   value.calls[1]!.kind = "SELFDESTRUCT";
-  const source = new SequenceDiagramBuilder().build(readDiagram(value));
+  const source = new SequenceDiagramBuilder({ mode: "always" }).build(
+    readDiagram(value),
+  );
   assert.match(source, /p1 -> p2: "swap(?: ×20)?"/);
-  assert.equal(source.match(/style.stroke-dash/g)?.length ?? 0, 1);
+  assert.equal(source.match(/ <-> /g)?.length ?? 0, 1);
   const created = { ...value.calls[1]!, kind: "CREATE", to: "contract" };
   const input = readDiagram({
     schemaVersion: 3,
@@ -178,8 +182,9 @@ test("selfdestruct has no synthetic return and failed creations stay distinct", 
     ],
   });
   assert.equal(
-    new SequenceDiagramBuilder().build(input).match(/: "contract(?:_2)?"/g)
-      ?.length,
+    new SequenceDiagramBuilder({ mode: "always" })
+      .build(input)
+      .match(/: "contract(?:_2)?"/g)?.length,
     2,
   );
 });
@@ -259,17 +264,21 @@ test("forwarding uses implementation names without merging separate proxies", ()
       },
     ],
   };
-  const source = new SequenceDiagramBuilder().build(readDiagram(input));
+  const source = new SequenceDiagramBuilder({ mode: "always" }).build(
+    readDiagram(input),
+  );
   assert.match(source, /p2: "Implementation"/);
   assert.match(source, /p3: "Implementation_2"/);
-  assert.match(source, /p1 -> p2: "swap(?: ×20)?"/);
-  assert.match(source, /p1 -> p2: "swap(?: ×20)?"/);
-  assert.equal(source.match(/ -> /g)?.length, 6);
+  assert.match(source, /p1 <-> p2: "swap(?: ×20)?"/);
+  assert.match(source, /p1 <-> p2: "swap(?: ×20)?"/);
+  assert.equal(source.match(/ <-> /g)?.length, 3);
   assert.doesNotMatch(source, /ProxyA|ProxyB/);
   input.calls[2]!.storageContext = "DifferentContext";
-  const unmatched = new SequenceDiagramBuilder().build(readDiagram(input));
+  const unmatched = new SequenceDiagramBuilder({ mode: "always" }).build(
+    readDiagram(input),
+  );
   assert.match(unmatched, /ProxyA/);
-  assert.equal(unmatched.match(/ -> /g)?.length, 8);
+  assert.equal(unmatched.match(/ <-> /g)?.length, 3);
 });
 
 test("distinct named actions and ordinary calls are not treated as forwarding", () => {
@@ -277,7 +286,9 @@ test("distinct named actions and ordinary calls are not treated as forwarding", 
     const value = fixture();
     value.calls[1]!.kind = kind;
     value.calls[1]!.storageContext = "B";
-    const source = new SequenceDiagramBuilder().build(readDiagram(value));
+    const source = new SequenceDiagramBuilder({ mode: "always" }).build(
+      readDiagram(value),
+    );
     assert.match(source, /"execute"/);
     assert.match(source, /"swap ×20"/);
   }

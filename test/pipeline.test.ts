@@ -95,6 +95,8 @@ test("pipeline coordinates one evidence identity and produces the complete repor
           jpeg: Buffer.from("jpeg"),
           width: 1,
           height: 1,
+          scale: 1,
+          quality: 80,
         };
       },
     },

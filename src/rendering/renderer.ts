@@ -1,7 +1,6 @@
 import { D2 } from "@d2lang/d2";
-import { Resvg } from "@resvg/resvg-js";
+import { DiagramRasterizer } from "./raster.js";
 import { compactCallLayout } from "./layout.js";
-import sharp from "sharp";
 import { SequenceDiagramBuilder, type DiagramInput } from "./sequence.js";
 
 export interface ImageOptions {
@@ -22,14 +21,18 @@ export function validateImageOptions(options: ImageOptions): void {
 }
 
 export class D2SequenceRenderer {
-  constructor(private readonly builder = new SequenceDiagramBuilder()) {}
+  constructor(
+    private readonly builder = new SequenceDiagramBuilder(),
+    private readonly rasterizer = new DiagramRasterizer(),
+  ) {}
 
   async render(
     input: DiagramInput,
     options: ImageOptions = { quality: 90, scale: 1 },
   ) {
     validateImageOptions(options);
-    const { source, names } = this.builder.buildDocument(input);
+    const { source, names, baselineRows, rows, stage } =
+      this.builder.buildDocument(input);
     const d2 = new D2();
     let svg: string;
     try {
@@ -46,30 +49,7 @@ export class D2SequenceRenderer {
     } finally {
       await d2.dispose();
     }
-    const rasterizer = new Resvg(svg, {
-      fitTo: { mode: "zoom", value: options.scale },
-      background: "white",
-      font: { defaultFontFamily: "Arial" },
-    });
-    if (
-      Math.ceil(rasterizer.width * options.scale) *
-        Math.ceil(rasterizer.height * options.scale) >
-      50_000_000
-    )
-      throw new Error("JPEG exceeds 50 million pixels; reduce --scale.");
-    const pixels = rasterizer.render();
-    const jpeg = await sharp(pixels.pixels, {
-      raw: { width: pixels.width, height: pixels.height, channels: 4 },
-    })
-      .jpeg({ quality: options.quality, chromaSubsampling: "4:4:4" })
-      .toBuffer({ resolveWithObject: true });
-    return {
-      source,
-      names,
-      svg,
-      jpeg: jpeg.data,
-      width: jpeg.info.width,
-      height: jpeg.info.height,
-    };
+    const raster = await this.rasterizer.render(svg, options);
+    return { source, names, svg, ...raster, baselineRows, rows, stage };
   }
 }

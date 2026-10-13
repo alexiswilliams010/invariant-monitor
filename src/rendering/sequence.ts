@@ -4,6 +4,8 @@ import { displayText } from "../decoding/presentation.js";
 import { ForwardingCollapser } from "./forwarding.js";
 import { StaticCallFilter } from "./static-calls.js";
 import { ParticipantNameResolver } from "./names.js";
+import { compactAssetLabel } from "./amounts.js";
+import { UnknownCallFilter } from "./unknown-calls.js";
 
 export interface DiagramCall {
   id: string;
@@ -121,12 +123,41 @@ export function readDiagram(value: unknown): DiagramInput {
   return { calls, sequence };
 }
 
+export interface DiagramSimplificationOptions {
+  readonly mode?: "auto" | "always" | "never";
+  readonly rowThreshold?: number;
+}
+
 export class SequenceDiagramBuilder {
+  constructor(private readonly options: DiagramSimplificationOptions = {}) {
+    if (
+      !Number.isSafeInteger(options.rowThreshold ?? 250) ||
+      (options.rowThreshold ?? 250) < 0
+    )
+      throw new Error("Diagram row threshold must be a nonnegative integer.");
+  }
   build(original: DiagramInput): string {
     return this.buildDocument(original).source;
   }
 
   buildDocument(original: DiagramInput) {
+    const detailed = this.buildVariant(original, false, false);
+    if (this.options.mode === "never") return detailed;
+    if (this.options.mode === "always")
+      return this.buildVariant(original, true, true);
+    const threshold = this.options.rowThreshold ?? 250;
+    if (detailed.rows <= threshold) return detailed;
+    const compact = this.buildVariant(original, true, false);
+    return compact.rows <= threshold
+      ? compact
+      : this.buildVariant(original, true, true);
+  }
+
+  private buildVariant(
+    original: DiagramInput,
+    simplified: boolean,
+    filterUnknown: boolean,
+  ) {
     const names = new ParticipantNameResolver().resolve(original);
     const forwarded = new ForwardingCollapser().collapse(
       new StaticCallFilter().filter(original),
@@ -147,7 +178,24 @@ export class SequenceDiagramBuilder {
           return children;
         return [{ ...node, children }];
       });
-    const input = { ...forwarded, sequence: omitSelfCalls(forwarded.sequence) };
+    const baseline = {
+      ...forwarded,
+      sequence: omitSelfCalls(forwarded.sequence),
+    };
+    const countRows = (nodes: readonly SequenceNode[]): number =>
+      nodes.reduce((total, node) => {
+        if (node.kind === "repeat") return total + countRows(node.body);
+        const call = baseline.calls.get(node.callId)!;
+        return (
+          total +
+          (call.assetMovement || call.kind === "SELFDESTRUCT" ? 1 : 2) +
+          countRows(node.children)
+        );
+      }, 0);
+    const baselineRows = countRows(baseline.sequence);
+    const input = filterUnknown
+      ? new UnknownCallFilter().filter(baseline)
+      : baseline;
     const participants = new Map<string, { id: string; label: string }>();
     const labels = new Set<string>();
     const targetKey = (call: DiagramCall) =>
@@ -176,11 +224,6 @@ export class SequenceDiagramBuilder {
       }
     };
     visit(input.sequence);
-    for (const id of original.unplacedMovements ?? []) {
-      const call = input.calls.get(id)!;
-      register(call.from, call.from);
-      register(targetKey(call), call.to);
-    }
     const lines = ["shape: sequence_diagram", "style.fill: white"];
     for (const { id, label } of participants.values())
       lines.push(
@@ -188,7 +231,8 @@ export class SequenceDiagramBuilder {
       );
     let group = 0;
     const emit = (nodes: readonly SequenceNode[], count = 1) => {
-      for (const node of nodes) {
+      for (let index = 0; index < nodes.length; index++) {
+        const node = nodes[index]!;
         if (node.kind === "repeat") {
           if (
             node.body.length === 1 &&
@@ -209,8 +253,30 @@ export class SequenceDiagramBuilder {
         const call = input.calls.get(node.callId)!;
         const from = participants.get(call.from)!.id;
         const to = participants.get(targetKey(call))!.id;
+        const actions = [
+          simplified && call.assetMovement
+            ? compactAssetLabel(call.action)
+            : call.action,
+        ];
+        if (simplified && call.assetMovement && !node.children.length) {
+          while (index + 1 < nodes.length) {
+            const next = nodes[index + 1]!;
+            if (next.kind !== "call" || next.children.length) break;
+            const candidate = input.calls.get(next.callId)!;
+            if (
+              !candidate.assetMovement ||
+              candidate.from !== call.from ||
+              candidate.to !== call.to ||
+              candidate.parentId !== call.parentId ||
+              candidate.reverted !== call.reverted
+            )
+              break;
+            actions.push(compactAssetLabel(candidate.action));
+            index++;
+          }
+        }
         const label =
-          call.action +
+          actions.join("\n") +
           (!call.assetMovement && call.kind === "CALL" && call.valueWei !== "0"
             ? ` · ${call.valueWei} wei`
             : "") +
@@ -221,32 +287,27 @@ export class SequenceDiagramBuilder {
           : call.assetMovement
             ? "#047857"
             : "#334e68";
+        const arrow =
+          simplified && !call.assetMovement && call.kind !== "SELFDESTRUCT"
+            ? "<->"
+            : "->";
         lines.push(
-          `${from} -> ${to}: ${quote(label)} {style.font-size: 20; style.font-color: "${color}"; style.stroke: "${color}"; style.stroke-width: 2}`,
+          `${from} ${arrow} ${to}: ${quote(label)} {style.font-size: 20; style.font-color: "${color}"; style.stroke: "${color}"; style.stroke-width: 2}`,
         );
         emit(node.children);
-        if (!call.assetMovement && call.kind !== "SELFDESTRUCT")
+        if (!simplified && !call.assetMovement && call.kind !== "SELFDESTRUCT")
           lines.push(
             `${to} -> ${from}: "" {style.stroke-dash: 4; style.stroke: "#64748b"; style.stroke-width: 1}`,
           );
       }
     };
     emit(input.sequence);
-    if (original.unplacedMovements?.length) {
-      lines.push(
-        'unplaced: "Reported transfers · call position unknown" {style.fill: "#f0fdf4"; style.font-size: 18',
-      );
-      emit(
-        original.unplacedMovements.map((callId) => ({
-          kind: "call",
-          callId,
-          children: [],
-        })),
-      );
-      lines.push("}");
-    }
 
     return {
+      baselineRows,
+      simplified,
+      stage: filterUnknown ? "filtered" : simplified ? "compact" : "detailed",
+      rows: lines.filter((line) => /^p\d+ (?:->|<->) p\d+:/.test(line)).length,
       source: lines.join("\n") + "\n",
       names: new Map(
         [...participants].map(([key, value]) => [key, value.label]),
@@ -262,5 +323,10 @@ function text(value: unknown): string {
 }
 
 function quote(value: string): string {
-  return JSON.stringify(displayText(value).replaceAll("$", "＄"));
+  return JSON.stringify(
+    value
+      .split("\n")
+      .map((line) => displayText(line).replaceAll("$", "＄"))
+      .join("\n"),
+  );
 }
